@@ -112,6 +112,22 @@ function ensureExtraColumns(){
     addCol('jobs','preferred_sitter_id',     "INT DEFAULT NULL COMMENT 'Book Again: requested sitter ID'");
 }
 
+// ── Ensure payout_requests table exists ──────────────────────
+function ensurePayoutTable(){
+    db()->exec("CREATE TABLE IF NOT EXISTS payout_requests (
+        id          INT AUTO_INCREMENT PRIMARY KEY,
+        sitter_id   INT NOT NULL,
+        amount      DECIMAL(8,2) NOT NULL,
+        status      ENUM('pending','approved','paid','rejected') DEFAULT 'pending',
+        method      VARCHAR(50)  DEFAULT 'direct_deposit',
+        notes       TEXT         DEFAULT NULL,
+        requested_at DATETIME    DEFAULT CURRENT_TIMESTAMP,
+        paid_at     DATETIME     DEFAULT NULL,
+        INDEX (sitter_id),
+        INDEX (status)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+}
+
 // ── Ensure messages table exists ─────────────────────────────
 function ensureMessagesTable(){
     db()->exec("CREATE TABLE IF NOT EXISTS messages (
@@ -785,6 +801,92 @@ switch ($action) {
             $weeks[$weekStart]['hours']       += (float)$p['hours_worked'];
         }
         ok(['weeks' => array_values($weeks), 'next_pay_date' => $nextFriday], 'Weekly earnings');
+
+    // ── REQUEST PAYOUT ────────────────────────────────────────
+    // Body: { sitter_id }
+    // Calculates available (unpaid) balance from payments table,
+    // creates a payout_request record, returns new balance.
+    case 'request_payout':
+        ensurePayoutTable();
+        ensurePaymentsTable();
+        $sitter_id = (int)($body['sitter_id'] ?? 0);
+        if (!$sitter_id) err('Missing sitter_id');
+
+        // Total net earned
+        $earned = row("SELECT COALESCE(SUM(amount_usd - platform_fee_usd),0) AS net
+                       FROM payments WHERE sitter_id=? AND status='succeeded'", [$sitter_id]);
+        $totalNet = (float)($earned['net'] ?? 0);
+
+        // Total already paid out
+        $paid = row("SELECT COALESCE(SUM(amount),0) AS paid
+                     FROM payout_requests WHERE sitter_id=? AND status IN ('approved','paid')", [$sitter_id]);
+        $totalPaid = (float)($paid['paid'] ?? 0);
+
+        // Pending requests
+        $pending = row("SELECT COALESCE(SUM(amount),0) AS pending
+                        FROM payout_requests WHERE sitter_id=? AND status='pending'", [$sitter_id]);
+        $totalPending = (float)($pending['pending'] ?? 0);
+
+        $available = round($totalNet - $totalPaid - $totalPending, 2);
+        if ($available < 1.00) err('Minimum payout is $1.00. Your available balance is $' . number_format($available, 2));
+
+        // Check bank account is set up
+        $sitter = row("SELECT routing_number, account_number FROM sitters WHERE id=?", [$sitter_id]);
+        if (empty($sitter['routing_number']) || empty($sitter['account_number'])) {
+            err('Please set up your bank account (Direct Deposit) before requesting a payout.');
+        }
+
+        run("INSERT INTO payout_requests (sitter_id, amount, status, method, requested_at)
+             VALUES (?, ?, 'pending', 'direct_deposit', NOW())", [$sitter_id, $available]);
+        $requestId = db()->lastInsertId();
+
+        ok([
+            'request_id'    => (int)$requestId,
+            'amount'        => $available,
+            'status'        => 'pending',
+            'available'     => 0.00,  // now $0 pending a review
+            'total_earned'  => $totalNet,
+            'total_paid'    => $totalPaid + $available,
+        ], "Payout request of \${$available} submitted — typically processed within 1 business day.");
+
+    // ── GET PAYOUT HISTORY ────────────────────────────────────
+    // Body: { sitter_id }
+    // Returns available balance + list of all payout requests
+    case 'get_payout_history':
+        ensurePayoutTable();
+        ensurePaymentsTable();
+        $sitter_id = (int)($body['sitter_id'] ?? $_GET['sitter_id'] ?? 0);
+        if (!$sitter_id) err('Missing sitter_id');
+
+        $earned = row("SELECT COALESCE(SUM(amount_usd - platform_fee_usd),0) AS net
+                       FROM payments WHERE sitter_id=? AND status='succeeded'", [$sitter_id]);
+        $totalNet = (float)($earned['net'] ?? 0);
+
+        $paid = row("SELECT COALESCE(SUM(amount),0) AS paid
+                     FROM payout_requests WHERE sitter_id=? AND status IN ('approved','paid')", [$sitter_id]);
+        $totalPaid = (float)($paid['paid'] ?? 0);
+
+        $pending = row("SELECT COALESCE(SUM(amount),0) AS pending
+                        FROM payout_requests WHERE sitter_id=? AND status='pending'", [$sitter_id]);
+        $totalPending = (float)($pending['pending'] ?? 0);
+
+        $available = round($totalNet - $totalPaid - $totalPending, 2);
+
+        $requests = rows("SELECT id, amount, status, method, requested_at, paid_at, notes
+                          FROM payout_requests WHERE sitter_id=?
+                          ORDER BY requested_at DESC LIMIT 30", [$sitter_id]);
+        foreach ($requests as &$r) {
+            $r['requested_at'] = utcIso($r['requested_at']);
+            $r['paid_at']      = $r['paid_at'] ? utcIso($r['paid_at']) : null;
+        }
+
+        ok([
+            'available'     => max(0, $available),
+            'total_earned'  => $totalNet,
+            'total_paid'    => $totalPaid,
+            'total_pending' => $totalPending,
+            'requests'      => $requests,
+        ], 'Payout history');
 
     // ── CHECK INCOMING JOB (sitter polls this) ────────────────
     case 'check_incoming':

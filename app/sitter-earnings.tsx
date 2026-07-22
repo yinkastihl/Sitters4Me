@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  StatusBar, ActivityIndicator, RefreshControl,
+  StatusBar, ActivityIndicator, RefreshControl, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -72,6 +72,13 @@ export default function SitterEarnings() {
   const [earningsError, setEarningsError] = useState<string | null>(null);
   const [historyError,  setHistoryError]  = useState<string | null>(null);
 
+  // Payout state
+  const [available,     setAvailable]     = useState(0);
+  const [totalPaid,     setTotalPaid]     = useState(0);
+  const [totalPending,  setTotalPending]  = useState(0);
+  const [payoutHistory, setPayoutHistory] = useState<any[]>([]);
+  const [requesting,    setRequesting]    = useState(false);
+
   const loadData = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true); else setLoading(true);
     setEarningsError(null);
@@ -105,7 +112,7 @@ export default function SitterEarnings() {
       }
     } catch { /* non-critical */ }
 
-    // ── Job history — runs independently, earnings failure won't block this ──
+    // ── Job history — runs independently ──────────────────────
     try {
       const res = await axios.post(`${JOBS_API}?action=sitter_job_history`, { sitter_id: sitterId });
       if (res.data?.success) {
@@ -116,6 +123,18 @@ export default function SitterEarnings() {
     } catch (e: any) {
       setHistoryError(e?.response?.data?.error || e?.message || 'Network error loading history');
     }
+
+    // ── Payout history + available balance ────────────────────
+    try {
+      const res = await axios.post(`${JOBS_API}?action=get_payout_history`, { sitter_id: sitterId });
+      if (res.data?.success) {
+        const d = res.data.data;
+        setAvailable(d.available   || 0);
+        setTotalPaid(d.total_paid  || 0);
+        setTotalPending(d.total_pending || 0);
+        setPayoutHistory(d.requests || []);
+      }
+    } catch { /* non-critical */ }
 
     setLoading(false); setRefreshing(false);
   }, [sitterId]);
@@ -135,6 +154,39 @@ export default function SitterEarnings() {
 
   const displayNet   = totalNet   > 0 ? totalNet   : historyTotal;
   const displayHours = totalHours > 0 ? totalHours : historyHours;
+
+  const requestPayout = () => {
+    if (available < 1) {
+      Alert.alert('No Balance', 'You have no available balance to withdraw yet.');
+      return;
+    }
+    Alert.alert(
+      '💸 Request Payout',
+      `Request ${fmtMoney(available)} to your bank account?\n\nTypically processed within 1 business day.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Request Payout',
+          onPress: async () => {
+            setRequesting(true);
+            try {
+              const res = await axios.post(`${JOBS_API}?action=request_payout`, { sitter_id: sitterId });
+              if (res.data?.success) {
+                Alert.alert('✅ Payout Requested!', `${fmtMoney(res.data.data?.amount || available)} has been requested and will be sent to your bank within 1 business day.`);
+                loadData(true);
+              } else {
+                Alert.alert('Error', res.data?.error || 'Could not request payout. Please try again.');
+              }
+            } catch (e: any) {
+              Alert.alert('Error', e.response?.data?.error || 'Connection error. Please try again.');
+            } finally {
+              setRequesting(false);
+            }
+          },
+        },
+      ]
+    );
+  };
 
   return (
     <SafeAreaView style={s.container}>
@@ -215,6 +267,12 @@ export default function SitterEarnings() {
               expanded={expanded}
               setExpanded={setExpanded}
               router={router}
+              available={available}
+              totalPaid={totalPaid}
+              totalPending={totalPending}
+              payoutHistory={payoutHistory}
+              requesting={requesting}
+              requestPayout={requestPayout}
             />
           )
         ) : tab === 'history' ? (
@@ -239,7 +297,7 @@ export default function SitterEarnings() {
 }
 
 // ── EARNINGS TAB ───────────────────────────────────────────────
-function EarningsTab({ weeks, nextPayDate, totalGross, totalNet, totalHours, jobCount, expanded, setExpanded, router }: any) {
+function EarningsTab({ weeks, nextPayDate, totalGross, totalNet, totalHours, jobCount, expanded, setExpanded, router, available, totalPaid, totalPending, payoutHistory, requesting, requestPayout }: any) {
   if (weeks.length === 0) {
     return (
       <View style={s.emptyBox}>
@@ -277,6 +335,56 @@ function EarningsTab({ weeks, nextPayDate, totalGross, totalNet, totalHours, job
         </View>
         <Text style={s.depositCtaChevron}>›</Text>
       </TouchableOpacity>
+
+      {/* ── PAYOUT CARD ─────────────────────────────────── */}
+      <View style={s.payoutCard}>
+        <View style={s.payoutTopRow}>
+          <View>
+            <Text style={s.payoutLabel}>Available to Withdraw</Text>
+            <Text style={s.payoutAmount}>{fmtMoney(available)}</Text>
+            {totalPending > 0 && (
+              <Text style={s.payoutPending}>⏳ {fmtMoney(totalPending)} pending review</Text>
+            )}
+          </View>
+          <TouchableOpacity
+            style={[s.payoutBtn, (available < 1 || requesting) && s.payoutBtnDisabled]}
+            onPress={requestPayout}
+            disabled={available < 1 || requesting}
+            activeOpacity={0.85}
+          >
+            {requesting
+              ? <ActivityIndicator color="#fff" size="small" />
+              : <Text style={s.payoutBtnText}>Withdraw</Text>
+            }
+          </TouchableOpacity>
+        </View>
+        <View style={s.payoutDivider} />
+        <View style={s.payoutMetaRow}>
+          <Text style={s.payoutMetaItem}>✅ Paid out: {fmtMoney(totalPaid)}</Text>
+          <Text style={s.payoutMetaItem}>⏳ Pending: {fmtMoney(totalPending)}</Text>
+        </View>
+
+        {/* Payout history */}
+        {payoutHistory.length > 0 && (
+          <>
+            <Text style={s.payoutHistTitle}>Payout History</Text>
+            {payoutHistory.map((p: any, i: number) => {
+              const statusColor = p.status === 'paid' ? '#1A7F6E' : p.status === 'pending' ? '#F5A623' : p.status === 'rejected' ? '#BF3B2E' : '#5A5F72';
+              const statusIcon  = p.status === 'paid' ? '✅' : p.status === 'pending' ? '⏳' : p.status === 'rejected' ? '❌' : '✓';
+              const dt = p.requested_at ? new Date(p.requested_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '';
+              return (
+                <View key={p.id || i} style={[s.payoutHistRow, i > 0 && { borderTopWidth: 1, borderTopColor: '#F0EEE9' }]}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.payoutHistAmt}>{fmtMoney(p.amount)}</Text>
+                    <Text style={s.payoutHistDate}>{dt}</Text>
+                  </View>
+                  <Text style={[s.payoutHistStatus, { color: statusColor }]}>{statusIcon} {p.status}</Text>
+                </View>
+              );
+            })}
+          </>
+        )}
+      </View>
 
       {/* All-time summary */}
       <View style={s.summaryCard}>
@@ -613,6 +721,25 @@ const s = StyleSheet.create({
   depositCtaTitle:    { fontSize:14, fontWeight:'700', color:'#0F1117' },
   depositCtaSub:      { fontSize:12, color:'#5A5F72', marginTop:2 },
   depositCtaChevron:  { fontSize:22, color:'#C93488', fontWeight:'700' },
+
+  // Payout card
+  payoutCard:         { backgroundColor:'#FFFFFF', borderRadius:16, padding:16, borderWidth:1, borderColor:'rgba(15,17,23,0.09)' },
+  payoutTopRow:       { flexDirection:'row', alignItems:'center', justifyContent:'space-between' },
+  payoutLabel:        { fontSize:12, fontWeight:'700', color:'#9B9FAE', textTransform:'uppercase', letterSpacing:0.5 },
+  payoutAmount:       { fontSize:28, fontWeight:'900', color:'#1A7F6E', marginTop:2 },
+  payoutPending:      { fontSize:12, color:'#F5A623', fontWeight:'600', marginTop:2 },
+  payoutBtn:          { backgroundColor:'#1A7F6E', borderRadius:12, paddingHorizontal:20, paddingVertical:12 },
+  payoutBtnDisabled:  { backgroundColor:'#C5C2BA' },
+  payoutBtnText:      { color:'#FFFFFF', fontSize:15, fontWeight:'800' },
+  payoutDivider:      { height:1, backgroundColor:'#F0EEE9', marginVertical:12 },
+  payoutMetaRow:      { flexDirection:'row', gap:16 },
+  payoutMetaItem:     { fontSize:12, color:'#5A5F72', fontWeight:'600' },
+  payoutHistTitle:    { fontSize:13, fontWeight:'800', color:'#0F1117', marginTop:14, marginBottom:8 },
+  payoutHistRow:      { flexDirection:'row', alignItems:'center', paddingVertical:8 },
+  payoutHistAmt:      { fontSize:15, fontWeight:'800', color:'#0F1117' },
+  payoutHistDate:     { fontSize:11, color:'#9B9FAE', marginTop:2 },
+  payoutHistStatus:   { fontSize:13, fontWeight:'700', textTransform:'capitalize' },
+
   summaryCard:        { backgroundColor:'#FFFFFF', borderRadius:16, padding:16, borderWidth:1, borderColor:'rgba(15,17,23,0.09)' },
   summaryTitle:       { fontSize:15, fontWeight:'800', color:'#0F1117', marginBottom:12 },
   summaryGrid:        { flexDirection:'row', flexWrap:'wrap', gap:10 },

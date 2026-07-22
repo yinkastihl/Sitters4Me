@@ -54,6 +54,29 @@ export default function ParentProfileEdit() {
     }
     setSaving(true);
     try {
+      // Upload photo first if a new one was picked
+      if (photo) {
+        try {
+          const response = await fetch(photo);
+          const blob     = await response.blob();
+          const b64: string = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+            reader.onerror   = reject;
+            reader.readAsDataURL(blob);
+          });
+          const uploadRes = await axios.post(`${JOBS_API}?action=upload_photo`, {
+            user_type:    'parent',
+            user_id:      user.id,
+            image_base64: b64,
+          });
+          if (uploadRes.data?.success) {
+            const filename = uploadRes.data.data?.filename;
+            if (filename) (global as any).currentUser = { ...(global as any).currentUser, image: filename };
+          }
+        } catch { /* photo upload failure is non-fatal */ }
+      }
+
       const res = await axios.post(`${JOBS_API}?action=update_parent_profile`, {
         parent_id: user.id,
         fname:     fname.trim(),
@@ -64,11 +87,7 @@ export default function ParentProfileEdit() {
       });
 
       if (res.data?.success) {
-        // Update global user object so header reflects changes immediately
-        (global as any).currentUser = {
-          ...user,
-          ...res.data.data,
-        };
+        (global as any).currentUser = { ...(global as any).currentUser, ...res.data.data };
         Alert.alert('✅ Saved!', 'Your profile has been updated.', [
           { text: 'OK', onPress: () => router.back() },
         ]);

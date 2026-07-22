@@ -14,6 +14,7 @@ import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import axios from 'axios';
+import { saveActiveSession, clearActiveSession } from './index';
 
 const JOBS_API   = 'https://sitters4me.com/api/jobs.php';
 const STRIPE_API = 'https://sitters4me.com/api/stripe.php';
@@ -296,6 +297,14 @@ export default function JobAccepted() {
     if (d.cancel_count !== undefined) setCancelCount(Number(d.cancel_count));
     if (d.cancel_free  !== undefined) setCancelFree(Boolean(d.cancel_free));
 
+    // Persist session so app can resume if killed mid-job
+    const jid = d.job_id || job?.job_id || job?.id;
+    if (jid && d.status && d.status !== 'Complete') {
+      saveActiveSession('parent', Number(jid), (global as any).currentUser || {});
+    } else if (d.status === 'Complete') {
+      clearActiveSession();
+    }
+
     // Sync waiting counter from server (seconds since sitter accepted)
     if (typeof d.waiting_seconds === 'number' && d.waiting_seconds > 0) {
       setWaitElapsed(d.waiting_seconds);
@@ -418,8 +427,8 @@ export default function JobAccepted() {
             const pid = parentId || Number(user.id) || Number((user as any).u_id) || 0;
             const jobId = job?.job_id || job?.id;
             if (!pid || !jobId) {
-              // Fallback — just navigate away
               global.activeJob = null;
+              clearActiveSession();
               router.replace('/parent-home');
               return;
             }
@@ -435,7 +444,7 @@ export default function JobAccepted() {
                   d.fee_applied
                     ? `A $${d.cancellation_fee?.toFixed(2)} cancellation fee has been applied.`
                     : `Cancellation successful. ${d.free_remaining} free cancellation${d.free_remaining !== 1 ? 's' : ''} remaining.`,
-                  [{ text: 'OK', onPress: () => { global.activeJob = null; router.replace('/parent-home'); } }]
+                  [{ text: 'OK', onPress: () => { global.activeJob = null; clearActiveSession(); router.replace('/parent-home'); } }]
                 );
               } else {
                 Alert.alert('Error', res.data?.error || 'Could not cancel. Please try again.');
@@ -934,7 +943,7 @@ export default function JobAccepted() {
             {phase === 'complete' && (
               <TouchableOpacity
                 style={s.doneBtn}
-                onPress={() => { global.activeJob = null; router.replace('/parent-home'); }}
+                onPress={() => { global.activeJob = null; clearActiveSession(); router.replace('/parent-home'); }}
                 activeOpacity={0.85}
               >
                 <LinearGradient colors={['#1A7F6E','#0D5C51']} start={{x:0,y:0}} end={{x:1,y:0}} style={s.doneBtnGrad}>

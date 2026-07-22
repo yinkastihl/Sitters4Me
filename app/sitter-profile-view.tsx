@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  StatusBar, ActivityIndicator, Image, Alert,
+  StatusBar, ActivityIndicator, Image, Alert, Linking, Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -114,6 +114,20 @@ export default function SitterProfileView() {
   const avgRating    = parseFloat(profile.avg_rating) || 0;
   const reviewCount  = parseInt(profile.review_count) || 0;
   const isOnline     = profile.online === 1 || profile.online === '1' || profile.online === true;
+
+  const [showContactModal, setShowContactModal] = useState(false);
+
+  const phone = profile.cellphone || sitter.cellphone || null;
+
+  const callSitter = () => {
+    if (!phone) return Alert.alert('No Phone', 'Phone number not available for this sitter.');
+    Linking.openURL(`tel:${phone.replace(/\D/g,'')}`);
+  };
+
+  const textSitter = () => {
+    if (!phone) return Alert.alert('No Phone', 'Phone number not available for this sitter.');
+    Linking.openURL(`sms:${phone.replace(/\D/g,'')}`);
+  };
 
   return (
     <SafeAreaView style={s.container} edges={['top']}>
@@ -293,10 +307,8 @@ export default function SitterProfileView() {
       {/* ── Fixed bottom CTA ── */}
       {!loading && (
         <View style={s.ctaBar}>
-          <TouchableOpacity style={s.interviewBtn} onPress={() =>
-            Alert.alert('Interview Sitter', 'Contact the sitter before booking to ask questions or discuss details.')
-          }>
-            <Text style={s.interviewBtnText}>📞 Interview</Text>
+          <TouchableOpacity style={s.interviewBtn} onPress={() => setShowContactModal(true)}>
+            <Text style={s.interviewBtnText}>📞 Contact</Text>
           </TouchableOpacity>
           <TouchableOpacity style={{ flex: 1 }} onPress={bookNow} activeOpacity={0.88}>
             <LinearGradient
@@ -311,6 +323,47 @@ export default function SitterProfileView() {
           </TouchableOpacity>
         </View>
       )}
+
+      {/* ── Contact modal ── */}
+      <Modal visible={showContactModal} transparent animationType="slide" onRequestClose={() => setShowContactModal(false)}>
+        <TouchableOpacity style={s.modalOverlay} activeOpacity={1} onPress={() => setShowContactModal(false)}>
+          <View style={s.contactSheet}>
+            <Text style={s.contactSheetTitle}>Contact {profile.fname || 'Sitter'}</Text>
+            <Text style={s.contactSheetSub}>Reach out before booking to ask questions</Text>
+
+            <TouchableOpacity style={s.contactOption} onPress={() => { setShowContactModal(false); callSitter(); }} activeOpacity={0.8}>
+              <Text style={s.contactOptionIcon}>📞</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={s.contactOptionTitle}>Call</Text>
+                <Text style={s.contactOptionSub}>{phone || 'Phone not available'}</Text>
+              </View>
+              <Text style={s.contactOptionChevron}>›</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={s.contactOption} onPress={() => { setShowContactModal(false); textSitter(); }} activeOpacity={0.8}>
+              <Text style={s.contactOptionIcon}>💬</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={s.contactOptionTitle}>Text Message</Text>
+                <Text style={s.contactOptionSub}>{phone || 'Phone not available'}</Text>
+              </View>
+              <Text style={s.contactOptionChevron}>›</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={[s.contactOption, { borderBottomWidth: 0 }]} onPress={() => { setShowContactModal(false); bookNow(); }} activeOpacity={0.8}>
+              <Text style={s.contactOptionIcon}>💼</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={s.contactOptionTitle}>Book Directly</Text>
+                <Text style={s.contactOptionSub}>Skip the interview — request now</Text>
+              </View>
+              <Text style={s.contactOptionChevron}>›</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={s.contactDismiss} onPress={() => setShowContactModal(false)}>
+              <Text style={s.contactDismissText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -369,9 +422,22 @@ const s = StyleSheet.create({
   reviewDate:      { fontSize: 11, color: '#9B9FAE' },
   reviewText:      { fontSize: 13, color: '#5A5F72', lineHeight: 20, fontStyle: 'italic', paddingLeft: 44 },
 
-  ctaBar:          { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#FFFFFF', flexDirection: 'row', gap: 10, padding: 16, paddingBottom: 32, borderTopWidth: 1, borderTopColor: '#F0EEE9', shadowColor: '#000', shadowOffset: { width: 0, height: -3 }, shadowOpacity: 0.08, shadowRadius: 10, elevation: 8 },
-  interviewBtn:    { flex: 1, borderRadius: 12, padding: 14, alignItems: 'center', borderWidth: 1.5, borderColor: '#E5E2DA', justifyContent: 'center' },
-  interviewBtnText:{ fontSize: 14, fontWeight: '700', color: '#5A5F72' },
-  bookBtn:         { borderRadius: 12, padding: 14, alignItems: 'center' },
-  bookBtnText:     { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  ctaBar:              { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#FFFFFF', flexDirection: 'row', gap: 10, padding: 16, paddingBottom: 32, borderTopWidth: 1, borderTopColor: '#F0EEE9', shadowColor: '#000', shadowOffset: { width: 0, height: -3 }, shadowOpacity: 0.08, shadowRadius: 10, elevation: 8 },
+  interviewBtn:        { flex: 1, borderRadius: 12, padding: 14, alignItems: 'center', borderWidth: 1.5, borderColor: '#E5E2DA', justifyContent: 'center' },
+  interviewBtnText:    { fontSize: 14, fontWeight: '700', color: '#5A5F72' },
+  bookBtn:             { borderRadius: 12, padding: 14, alignItems: 'center' },
+  bookBtnText:         { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+
+  // Contact modal
+  modalOverlay:        { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+  contactSheet:        { backgroundColor: '#FFFFFF', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 40 },
+  contactSheetTitle:   { fontSize: 19, fontWeight: '900', color: '#0F1117', textAlign: 'center', marginBottom: 4 },
+  contactSheetSub:     { fontSize: 13, color: '#9B9FAE', textAlign: 'center', marginBottom: 20 },
+  contactOption:       { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F0EEE9' },
+  contactOptionIcon:   { fontSize: 26, width: 36, textAlign: 'center' },
+  contactOptionTitle:  { fontSize: 16, fontWeight: '700', color: '#0F1117' },
+  contactOptionSub:    { fontSize: 12, color: '#9B9FAE', marginTop: 2 },
+  contactOptionChevron:{ fontSize: 22, color: '#C5C2BA', fontWeight: '300' },
+  contactDismiss:      { marginTop: 16, borderRadius: 12, padding: 14, alignItems: 'center', backgroundColor: '#F5F4F0' },
+  contactDismissText:  { fontSize: 15, fontWeight: '700', color: '#5A5F72' },
 });

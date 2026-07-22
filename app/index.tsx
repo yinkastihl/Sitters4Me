@@ -1,14 +1,54 @@
-// app/(tabs)/index.tsx
-import React from 'react';
+// app/index.tsx — Welcome / entry screen
+import React, { useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, StatusBar, Image, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
+import * as FileSystem from 'expo-file-system';
 
 const { height } = Dimensions.get('window');
 
+const SESSION_FILE = FileSystem.documentDirectory + 'active_session.json';
+
+// Call this when a job becomes active — persists across full app restarts
+export async function saveActiveSession(userType: 'parent' | 'sitter', jobId: number, user: any) {
+  try {
+    await FileSystem.writeAsStringAsync(SESSION_FILE, JSON.stringify({ userType, jobId, user }));
+  } catch {}
+}
+
+// Call this when a job ends
+export async function clearActiveSession() {
+  try { await FileSystem.deleteAsync(SESSION_FILE, { idempotent: true }); } catch {}
+}
+
 export default function WelcomeScreen() {
   const router = useRouter();
+
+  useEffect(() => {
+    // 1. If still in memory from backgrounding, skip welcome screen
+    const u = (global as any).currentUser;
+    if (u) {
+      const userType = u.user_type || (u.minrate !== undefined ? 'sitter' : 'parent');
+      router.replace(userType === 'sitter' ? '/sitter-home' : '/parent-home');
+      return;
+    }
+    // 2. Check persisted session file for mid-job restarts
+    (async () => {
+      try {
+        const info = await FileSystem.getInfoAsync(SESSION_FILE);
+        if (!info.exists) return;
+        const raw  = await FileSystem.readAsStringAsync(SESSION_FILE);
+        const sess = JSON.parse(raw);
+        if (sess?.user && sess?.jobId) {
+          (global as any).currentUser = sess.user;
+          (global as any).activeJob   = { job_id: sess.jobId, id: sess.jobId };
+          router.replace(sess.userType === 'sitter' ? '/active-job' : '/job-accepted');
+        }
+      } catch {}
+    })();
+  }, []);
+
   return (
     <SafeAreaView style={s.container}>
       <StatusBar barStyle="light-content" />

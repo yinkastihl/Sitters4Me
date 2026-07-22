@@ -9,6 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import axios from 'axios';
+import { saveActiveSession, clearActiveSession } from './index';
 
 const JOBS_API   = 'https://sitters4me.com/api/jobs.php';
 const STRIPE_API = 'https://sitters4me.com/api/stripe.php';
@@ -119,6 +120,7 @@ export default function ActiveJob() {
         if (jid) {
           jobIdRef.current = Number(jid);
           startStatusPoll(Number(jid));
+          saveActiveSession('sitter', Number(jid), user);
         }
       } else {
         // Use global activeJob as fallback
@@ -128,6 +130,7 @@ export default function ActiveJob() {
           if (jid) {
             jobIdRef.current = Number(jid);
             startStatusPoll(Number(jid));
+            saveActiveSession('sitter', Number(jid), user);
           }
         }
       }
@@ -138,6 +141,7 @@ export default function ActiveJob() {
         if (jid) {
           jobIdRef.current = Number(jid);
           startStatusPoll(Number(jid));
+          saveActiveSession('sitter', Number(jid), user);
         }
       }
     } finally {
@@ -167,6 +171,7 @@ export default function ActiveJob() {
               text: 'OK',
               onPress: () => {
                 global.activeJob = null;
+                clearActiveSession();
                 router.replace('/sitter-home');
               },
             }]
@@ -242,6 +247,7 @@ export default function ActiveJob() {
     stopTimer();
     clearInterval(statusPollRef.current); // no longer need cancellation check
     setStatus('done');
+    clearActiveSession();
 
     const jobId    = job?.id || job?.job_id;
     const kids     = job?.kids || user?.kids || 1;
