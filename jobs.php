@@ -315,6 +315,53 @@ function sendExpoPush($token, $title, $body, $data=[]){
     return json_decode($result, true);
 }
 
+// ── Auto-cancel no-show scheduled jobs ───────────────────────
+// Runs on every request (lightweight single-query check).
+// Cancels any 'Sitter hired' scheduled job whose scheduled_time passed
+// more than 1 hour ago without the sitter tapping I Have Arrived / Start Job.
+function autoCancelNoShows() {
+    try {
+        $stale = rows("
+            SELECT j.id, j.scheduled_time,
+                   p.push_token AS parent_token,
+                   CONCAT(p.fname,' ',p.lname) AS parent_name,
+                   s.push_token AS sitter_token,
+                   CONCAT(s.fname,' ',s.lname) AS sitter_name
+            FROM jobs j
+            LEFT JOIN parents p ON p.id = j.parent_id
+            LEFT JOIN sitters s ON s.id = j.sitter_id
+            WHERE j.status     = 'Sitter hired'
+              AND j.scheduled_time IS NOT NULL
+              AND j.scheduled_time < NOW() - INTERVAL 1 HOUR
+        ");
+        foreach ($stale as $job) {
+            run("UPDATE jobs SET status='Cancelled' WHERE id=?", [$job['id']]);
+            $dt = date('D, M j \a\t g:i A', strtotime($job['scheduled_time']));
+            // Notify parent
+            if (!empty($job['parent_token'])) {
+                sendExpoPush(
+                    $job['parent_token'],
+                    '⚠️ Sitter Did Not Arrive',
+                    'Your sitter did not show up for the ' . $dt . ' appointment. Booking has been cancelled — you can now schedule a new sitter.',
+                    ['type' => 'no_show_parent', 'job_id' => (int)$job['id']]
+                );
+            }
+            // Notify sitter
+            if (!empty($job['sitter_token'])) {
+                sendExpoPush(
+                    $job['sitter_token'],
+                    '❌ Job Auto-Cancelled',
+                    'Your ' . $dt . ' scheduled job was cancelled because it was not started within 1 hour of the appointment time.',
+                    ['type' => 'no_show_sitter', 'job_id' => (int)$job['id']]
+                );
+            }
+            error_log("autoCancelNoShows: cancelled job #{$job['id']} (scheduled {$job['scheduled_time']}, sitter no-show)");
+        }
+    } catch (Exception $e) {
+        error_log("autoCancelNoShows error: " . $e->getMessage());
+    }
+}
+
 // ── ROUTER ────────────────────────────────────────────────────
 $body   = json_decode(file_get_contents('php://input'), true) ?? [];
 $action = $_GET['action'] ?? ($body['action'] ?? '');
@@ -323,6 +370,7 @@ $action = $_GET['action'] ?? ($body['action'] ?? '');
 ensureExtraColumns();
 ensurePaymentsTable();
 ensurePayoutTable();     // ensures payout_requests table exists for admin_stats
+autoCancelNoShows();     // cancel stale no-show scheduled jobs (>1 hr past scheduled_time)
 
 try {
 
