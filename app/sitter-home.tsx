@@ -48,6 +48,7 @@ export default function SitterHome() {
   const [incomingJob, setIncomingJob]   = useState<any>(null);
   const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
   const [upcomingJobs, setUpcomingJobs] = useState<any[]>([]);
+  const [tick, setTick] = useState(0); // increments every 60s to re-evaluate minsUntil
   // Increment to force re-render after returning from profile edit screen
   const [profileVersion, setProfileVersion] = useState(0);
   const [hasActiveJob,   setHasActiveJob]   = useState(false);
@@ -78,15 +79,19 @@ export default function SitterHome() {
     } catch {}
   };
 
+  const tickRef = useRef<any>(null);
   useEffect(() => {
     loadUpcoming();
     upcomingPollRef.current = setInterval(loadUpcoming, 30000);
+    // Tick every 60s so minsUntil recalculates and the Begin Job button unlocks on time
+    tickRef.current = setInterval(() => setTick(t => t + 1), 60000);
     return () => {
       clearInterval(countRef.current);
       clearInterval(pollRef.current);
       clearInterval(soundLoopRef.current);
       clearInterval(cancelPollRef.current);
       clearInterval(upcomingPollRef.current);
+      clearInterval(tickRef.current);
       Vibration.cancel();
     };
   }, []);
@@ -610,8 +615,14 @@ export default function SitterHome() {
                 ? ages.map((a: number) => a === 0 ? 'Infant' : `${a}yr`).join(', ')
                 : null;
               const dur = job.duration_hours ? `${job.duration_hours}hr` : null;
+              const minsUntil  = dt ? Math.round((dt.getTime() - Date.now()) / 60000) : null;
+              const canBegin   = minsUntil !== null && minsUntil <= 45;
+              const timeLabel  = minsUntil === null ? null
+                : minsUntil <= 0  ? '🟢 Time to go!'
+                : minsUntil < 60  ? `⏰ In ${minsUntil} min`
+                : `⏰ In ${Math.round(minsUntil / 60)} hr${Math.round(minsUntil / 60) !== 1 ? 's' : ''}`;
               return (
-                <View key={job.id} style={s.upcomingCard}>
+                <View key={`${job.id}-${tick}`} style={s.upcomingCard}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
                     <View style={s.upcomingDateBox}>
                       <Text style={s.upcomingDateMon}>{dt ? dt.toLocaleDateString('en-US', { month: 'short' }) : '—'}</Text>
@@ -626,12 +637,35 @@ export default function SitterHome() {
                     </View>
                     <Text style={s.upcomingRate}>${job.rate || '—'}/hr</Text>
                   </View>
-                  <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                  <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
                     <View style={s.upcomingChip}><Text style={s.upcomingChipText}>🍼 {job.kids || 1} child{(job.kids || 1) !== 1 ? 'ren' : ''}</Text></View>
                     {agesStr && <View style={s.upcomingChip}><Text style={s.upcomingChipText}>Ages: {agesStr}</Text></View>}
                     {job.city && <View style={s.upcomingChip}><Text style={s.upcomingChipText}>📍 {job.city}</Text></View>}
+                    {timeLabel && <View style={s.upcomingChip}><Text style={s.upcomingChipText}>{timeLabel}</Text></View>}
                   </View>
                   {!!job.notes && <Text style={s.upcomingNotes}>📝 {job.notes}</Text>}
+
+                  {canBegin ? (
+                    <TouchableOpacity
+                      activeOpacity={0.85}
+                      onPress={() => {
+                        global.activeJob = { job_id: job.id, id: job.id, ...job };
+                        router.push('/active-job');
+                      }}
+                    >
+                      <LinearGradient
+                        colors={['#16A34A', '#1A7F6E']}
+                        start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                        style={s.beginJobBtn}
+                      >
+                        <Text style={s.beginJobText}>🚗  I'm On My Way — Begin Job</Text>
+                      </LinearGradient>
+                    </TouchableOpacity>
+                  ) : (
+                    <View style={s.beginJobBtnDisabled}>
+                      <Text style={s.beginJobTextDisabled}>🔒  Unlocks 45 min before appointment</Text>
+                    </View>
+                  )}
                 </View>
               );
             })}
@@ -831,7 +865,11 @@ const s = StyleSheet.create({
   upcomingRate:    { fontSize: 16, fontWeight: '900', color: '#02A4E2' },
   upcomingChip:    { backgroundColor: '#F5F4F0', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 },
   upcomingChipText:{ fontSize: 12, fontWeight: '600', color: '#5A5F72' },
-  upcomingNotes:   { marginTop: 10, fontSize: 12, color: '#5A5F72', fontStyle: 'italic', lineHeight: 18 },
+  upcomingNotes:       { marginBottom: 10, fontSize: 12, color: '#5A5F72', fontStyle: 'italic', lineHeight: 18 },
+  beginJobBtn:         { borderRadius: 12, paddingVertical: 13, alignItems: 'center' },
+  beginJobText:        { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  beginJobBtnDisabled: { borderRadius: 12, paddingVertical: 12, alignItems: 'center', backgroundColor: '#F5F4F0', borderWidth: 1, borderColor: '#E5E2DA' },
+  beginJobTextDisabled:{ color: '#9B9FAE', fontSize: 13, fontWeight: '600' },
   quickRow:        { flexDirection: 'row', gap: 10 },
   quickBtn:        { flex: 1, backgroundColor: '#FFFFFF', borderRadius: 14, padding: 16, alignItems: 'center', gap: 6, borderWidth: 1, borderColor: 'rgba(15,17,23,0.09)', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 2 },
   quickLabel:      { fontSize: 11, fontWeight: '600', color: '#5A5F72', textAlign: 'center' },

@@ -566,7 +566,7 @@ function HistoryTab({ jobs }: { jobs: any[] }) {
               </View>
               {fee > 0 && (
                 <View style={s.histEarnRow}>
-                  <Text style={s.histEarnLabel}>Platform fee (8%)</Text>
+                  <Text style={s.histEarnLabel}>Platform fee (15%)</Text>
                   <Text style={[s.histEarnVal, { color: '#9B9FAE' }]}>−{fmtMoney(fee)}</Text>
                 </View>
               )}

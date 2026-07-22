@@ -233,7 +233,7 @@ export default function ParentPaymentSettings() {
             {[
               { icon: '✅', title: 'Automatic at job end',    desc: 'When the sitter taps "End Job", your card is charged automatically — no action needed.' },
               { icon: '🔒', title: 'Powered by Stripe',       desc: 'Your card is stored securely by Stripe (the same payment system used by Amazon, Google, and millions of businesses).' },
-              { icon: '💰', title: '8% platform fee',         desc: 'Sitters4Me charges 8% to cover platform costs. You see the full amount charged before any job.' },
+              { icon: '💰', title: '15% platform fee',        desc: 'Sitters4Me charges 15% to cover platform costs. You see the full amount charged before any job.' },
               { icon: '📧', title: 'Email receipt',           desc: 'You receive an email receipt from Stripe after each job is charged.' },
             ].map(item => (
               <View key={item.title} style={s.infoRow}>

@@ -121,7 +121,7 @@ export default function SitterBankSetup() {
                     { icon: '💳', label: 'Pay day',        value: 'Every Friday' },
                     { icon: '⏳', label: 'Pay cycle',      value: 'Previous Sunday–Friday work paid next Friday' },
                     { icon: '🏦', label: 'Next payment',   value: nextPayFriday },
-                    { icon: '💰', label: 'Platform fee',   value: '8% deducted per job' },
+                    { icon: '💰', label: 'Platform fee',   value: '15% deducted per job' },
                     { icon: '📧', label: 'Check option',   value: 'No bank account = mailed check' },
                   ].map(r => (
                     <View key={r.label} style={s.payCycleRow}>

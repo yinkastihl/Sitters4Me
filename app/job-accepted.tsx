@@ -170,6 +170,7 @@ export default function JobAccepted() {
   const [starValue, setStarValue]             = useState(5);
   const [reviewText, setReviewText]           = useState('');
   const [submittingReview, setSubmittingReview] = useState(false);
+  const [reviewError, setReviewError]           = useState<string | null>(null);
 
   // Save sitter
   const [sitterSaved,  setSitterSaved]  = useState(false);
@@ -463,10 +464,14 @@ export default function JobAccepted() {
 
   // ── SUBMIT REVIEW ─────────────────────────────────────────────
   const submitReview = async () => {
+    setReviewError(null);
     const jobId    = job?.job_id || job?.id;
     const pid      = parentId || Number(user.id) || 0;
     const sid      = sitter?.id || Number(job?.sitter_id) || 0;
-    if (!jobId || !pid || !sid) return Alert.alert('Error', 'Missing data — cannot submit review.');
+    if (!jobId || !pid || !sid) {
+      setReviewError('Missing job data — please try again.');
+      return;
+    }
     setSubmittingReview(true);
     try {
       await axios.post(`${JOBS_API}?action=submit_review`, {
@@ -476,7 +481,7 @@ export default function JobAccepted() {
       setRatingSubmitted(true);
       setShowRatingModal(false);
     } catch {
-      Alert.alert('Error', 'Could not submit review. Please try again.');
+      setReviewError('Could not submit review. Please try again.');
     } finally {
       setSubmittingReview(false);
     }
@@ -968,7 +973,7 @@ export default function JobAccepted() {
               {/* Fixed header — never scrolls away */}
               <View style={s.ratingModalHeader}>
                 <Text style={s.ratingModalTitle}>⭐ Rate Your Sitter</Text>
-                <TouchableOpacity onPress={() => setShowRatingModal(false)}>
+                <TouchableOpacity onPress={() => { setShowRatingModal(false); setReviewError(null); }}>
                   <Text style={s.ratingModalClose}>✕</Text>
                 </TouchableOpacity>
               </View>
@@ -1001,11 +1006,18 @@ export default function JobAccepted() {
                   multiline
                   numberOfLines={3}
                   value={reviewText}
-                  onChangeText={setReviewText}
+                  onChangeText={t => { setReviewText(t); if (reviewError) setReviewError(null); }}
                   maxLength={500}
                   returnKeyType="done"
                   blurOnSubmit
                 />
+
+                {reviewError && (
+                  <View style={s.reviewErrorTip}>
+                    <Text style={s.reviewErrorIcon}>⚠️</Text>
+                    <Text style={s.reviewErrorText}>{reviewError}</Text>
+                  </View>
+                )}
 
                 <TouchableOpacity
                   style={[s.submitReviewBtn, submittingReview && { opacity: 0.6 }]}
@@ -1021,7 +1033,7 @@ export default function JobAccepted() {
                   </LinearGradient>
                 </TouchableOpacity>
 
-                <TouchableOpacity onPress={() => setShowRatingModal(false)} style={{ marginTop: 6 }}>
+                <TouchableOpacity onPress={() => { setShowRatingModal(false); setReviewError(null); }} style={{ marginTop: 6 }}>
                   <Text style={{ color: '#9B9FAE', fontSize: 14, textAlign: 'center' }}>Skip for now</Text>
                 </TouchableOpacity>
               </ScrollView>
@@ -1188,6 +1200,9 @@ const s = StyleSheet.create({
   ratingPrompt:       { fontSize: 14, color: '#5A5F72', marginTop: 2 },
   starLabel:          { fontSize: 14, fontWeight: '700', color: '#F5A623', marginTop: -4 },
   reviewInput:        { alignSelf: 'stretch', borderWidth: 1.5, borderColor: '#E5E2DA', borderRadius: 12, padding: 12, fontSize: 14, color: '#0F1117', minHeight: 80, textAlignVertical: 'top', marginTop: 6 },
+  reviewErrorTip:     { alignSelf: 'stretch', flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#FFF4E5', borderWidth: 1, borderColor: '#F5A623', borderRadius: 10, padding: 10, marginTop: 8 },
+  reviewErrorIcon:    { fontSize: 16 },
+  reviewErrorText:    { flex: 1, fontSize: 13, color: '#7A4900', fontWeight: '600', lineHeight: 18 },
   submitReviewBtn:    { alignSelf: 'stretch', borderRadius: 14, overflow: 'hidden', marginTop: 8 },
   submitReviewGrad:   { padding: 16, alignItems: 'center' },
   submitReviewText:   { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },

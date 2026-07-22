@@ -24,7 +24,9 @@ export default function ParentHome() {
   const pulseLoop = useRef<any>(null);
   const pollRef        = useRef<any>(null);
   const sitterPollRef  = useRef<any>(null);
+  const upcomingPollRef = useRef<any>(null);
   const searchActiveRef = useRef(false);
+  const [upcomingJobs, setUpcomingJobs] = useState<any[]>([]);
   // Default to Houston; overridden as soon as GPS resolves
   const DEFAULT_LOC = { latitude: 29.7604, longitude: -95.3698 };
   const locRef = useRef<any>((global as any).lastParentLoc || DEFAULT_LOC); // always current — avoids stale closure in setInterval
@@ -46,6 +48,8 @@ export default function ParentHome() {
     useCallback(() => {
       const aj = (global as any).activeJob;
       setHasActiveJob(!!(aj?.job_id));
+      // Reset so the scheduled-job redirect can fire again after returning from job-accepted
+      if (!aj?.job_id) scheduledActiveRef.current = false;
     }, [])
   );
 
@@ -115,10 +119,14 @@ export default function ParentHome() {
         loadOnlineSitters(undefined, true); // silent — no loading flash
       }
     }, 10000);
+    // Load upcoming scheduled jobs and refresh every 30s
+    loadUpcoming();
+    upcomingPollRef.current = setInterval(loadUpcoming, 30000);
     return () => {
       pulseLoop.current?.stop?.();
       clearInterval(pollRef.current);
       clearInterval(sitterPollRef.current);
+      clearInterval(upcomingPollRef.current);
     };
   }, []);
 
@@ -204,6 +212,62 @@ export default function ParentHome() {
     }
   };
 
+  // ── UPCOMING SCHEDULED JOBS ──────────────────────────────────
+  const scheduledActiveRef = useRef(false); // prevent double-navigate
+  const loadUpcoming = async () => {
+    if (!user.id) return;
+    try {
+      const res = await axios.post(`${JOBS_API}?action=get_parent_scheduled`, { parent_id: user.id });
+      if (!res.data?.success) return;
+      const jobs: any[] = res.data.data || [];
+
+      // Detect if any scheduled job has gone live (sitter on way / job started)
+      const activeStatuses = ['sitter arrived', 'in progress'];
+      const liveJob = jobs.find(j => activeStatuses.includes((j.status || '').toLowerCase()));
+      if (liveJob && !scheduledActiveRef.current && !(global as any).activeJob) {
+        scheduledActiveRef.current = true;
+        (global as any).activeJob = {
+          job_id:      liveJob.id,
+          sitter_id:   liveJob.sitter_id || 0,
+          sitter_name: liveJob.sitter_name || '',
+        };
+        setHasActiveJob(true);
+        router.push('/job-accepted');
+        return;
+      }
+
+      // Only show truly upcoming (not active) jobs in the list
+      setUpcomingJobs(jobs.filter(j => !activeStatuses.includes((j.status || '').toLowerCase())));
+    } catch {}
+  };
+
+  const cancelScheduledJob = (jobId: number) => {
+    Alert.alert(
+      'Cancel Appointment',
+      'Are you sure you want to cancel this scheduled appointment?',
+      [
+        { text: 'Keep It', style: 'cancel' },
+        {
+          text: 'Yes, Cancel', style: 'destructive',
+          onPress: async () => {
+            try {
+              const res = await axios.post(`${JOBS_API}?action=cancel_scheduled`, {
+                job_id: jobId, parent_id: user.id,
+              });
+              if (res.data?.success) {
+                setUpcomingJobs(prev => prev.filter(j => j.id !== jobId));
+              } else {
+                Alert.alert('Error', res.data?.error || 'Could not cancel. Please try again.');
+              }
+            } catch {
+              Alert.alert('Connection Error', 'Could not reach the server. Please try again.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   // ── SCHEDULE FUTURE APPOINTMENT ─────────────────────────────
   const scheduleAppointment = async () => {
     const combined = new Date(schedDate);
@@ -231,6 +295,7 @@ export default function ParentHome() {
       setShowScheduleModal(false);
       setSchedNotes('');
       if (res.data?.success) {
+        loadUpcoming(); // refresh upcoming list
         const durStr = schedDuration === 1 ? '1 hour' : `${schedDuration} hours`;
         Alert.alert(
           '📅 Appointment Scheduled!',
@@ -638,7 +703,7 @@ export default function ParentHome() {
 
         {/* Default state */}
         {!selected && !requesting && !requestSent && (
-          <View>
+          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
             {/* Active job in progress — block new bookings */}
             {hasActiveJob ? (
               <View style={s.activeJobDrawer}>
@@ -770,7 +835,60 @@ export default function ParentHome() {
                 </TouchableOpacity>
               </View>
             )}
-          </View>
+
+            {/* UPCOMING SCHEDULED APPOINTMENTS */}
+            {upcomingJobs.length > 0 && (
+              <>
+                <Text style={s.upcomingTitle}>Upcoming Appointments</Text>
+                {upcomingJobs.map((job: any) => {
+                  const dt = job.scheduled_time ? new Date(job.scheduled_time) : null;
+                  const ages: number[] = Array.isArray(job.children_ages) ? job.children_ages : [];
+                  const agesStr = ages.length > 0
+                    ? ages.map((a: number) => a === 0 ? 'Infant' : `${a}yr`).join(', ')
+                    : null;
+                  const dur = job.duration_hours ? `${job.duration_hours}hr` : null;
+                  const sitterAssigned = !!job.sitter_name?.trim();
+                  return (
+                    <View key={job.id} style={s.upcomingCard}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                        <View style={s.upcomingDateBox}>
+                          <Text style={s.upcomingDateMon}>{dt ? dt.toLocaleDateString('en-US', { month: 'short' }) : '—'}</Text>
+                          <Text style={s.upcomingDateDay}>{dt ? dt.getDate() : '—'}</Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={s.upcomingJobTitle}>
+                            {dt ? dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '—'}
+                            {dur ? `  ·  ${dur}` : ''}
+                          </Text>
+                          <Text style={s.upcomingJobSub}>
+                            {sitterAssigned ? `👩‍👧 ${job.sitter_name}${job.rate > 0 ? `  ·  $${job.rate}/hr` : ''}` : '⏳ Awaiting sitter confirmation'}
+                          </Text>
+                        </View>
+                        <View style={[s.upcomingStatusBadge, sitterAssigned ? s.upcomingStatusConfirmed : s.upcomingStatusPending]}>
+                          <Text style={[s.upcomingStatusText, sitterAssigned ? { color: '#1A7F6E' } : { color: '#7A5500' }]}>
+                            {sitterAssigned ? 'Confirmed' : 'Pending'}
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+                        <View style={s.upcomingChip}><Text style={s.upcomingChipText}>🍼 {job.kids || 1} child{(job.kids || 1) !== 1 ? 'ren' : ''}</Text></View>
+                        {agesStr && <View style={s.upcomingChip}><Text style={s.upcomingChipText}>Ages: {agesStr}</Text></View>}
+                        {job.city && <View style={s.upcomingChip}><Text style={s.upcomingChipText}>📍 {job.city}</Text></View>}
+                      </View>
+                      {!!job.notes && <Text style={s.upcomingNotes}>📝 {job.notes}</Text>}
+                      <TouchableOpacity
+                        style={s.upcomingCancelBtn}
+                        onPress={() => cancelScheduledJob(job.id)}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={s.upcomingCancelText}>✕  Cancel Appointment</Text>
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })}
+              </>
+            )}
+          </ScrollView>
         )}
 
         {/* Selected sitter profile */}
@@ -1183,6 +1301,23 @@ const s = StyleSheet.create({
   chipDist:          { fontSize: 11, color: '#9B9FAE' },
   schedBtn:          { borderRadius: 12, padding: 13, alignItems: 'center' },
   schedBtnText:      { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
+  // Upcoming appointments
+  upcomingTitle:       { fontSize: 15, fontWeight: '800', color: '#0F1117', marginTop: 18, marginBottom: 8 },
+  upcomingCard:        { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 14, borderWidth: 1.5, borderColor: 'rgba(155,91,171,0.25)', marginBottom: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 3 },
+  upcomingDateBox:     { width: 46, alignItems: 'center', backgroundColor: '#F3EEF9', borderRadius: 10, paddingVertical: 6 },
+  upcomingDateMon:     { fontSize: 11, fontWeight: '700', color: '#9B5BAB', textTransform: 'uppercase' },
+  upcomingDateDay:     { fontSize: 22, fontWeight: '900', color: '#9B5BAB', lineHeight: 26 },
+  upcomingJobTitle:    { fontSize: 14, fontWeight: '800', color: '#0F1117' },
+  upcomingJobSub:      { fontSize: 12, color: '#5A5F72', marginTop: 2 },
+  upcomingStatusBadge: { borderRadius: 20, paddingHorizontal: 9, paddingVertical: 3, borderWidth: 1 },
+  upcomingStatusConfirmed: { backgroundColor: '#D4EDE9', borderColor: '#1A7F6E' },
+  upcomingStatusPending:   { backgroundColor: '#FFF8E1', borderColor: '#F5A623' },
+  upcomingStatusText:  { fontSize: 11, fontWeight: '700' },
+  upcomingChip:        { backgroundColor: '#F5F4F0', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 },
+  upcomingChipText:    { fontSize: 12, fontWeight: '600', color: '#5A5F72' },
+  upcomingNotes:       { fontSize: 12, color: '#5A5F72', fontStyle: 'italic', marginBottom: 8, lineHeight: 18 },
+  upcomingCancelBtn:   { marginTop: 4, borderRadius: 10, borderWidth: 1.5, borderColor: '#E53E3E', padding: 9, alignItems: 'center' },
+  upcomingCancelText:  { fontSize: 13, fontWeight: '700', color: '#E53E3E' },
   profileRow:        { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 10 },
   profileAvWrap:     { width: 56, height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 },
   profileAvText:     { fontSize: 18, fontWeight: '800', color: '#FFFFFF', zIndex: 1 },

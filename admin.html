@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sitters4Me — Admin Portal</title>
+<style>
+  :root {
+    --primary:#6C63FF; --primary-dark:#574fd6;
+    --danger:#e74c3c;  --success:#27ae60;
+    --warning:#f39c12; --info:#2980b9;
+    --bg:#f4f6fb; --card:#fff; --border:#e0e4ef;
+    --text:#1a1a2e; --muted:#6b7280; --radius:10px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);font-size:14px}
+
+  /* LOGIN */
+  .login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(135deg,#6C63FF,#48d4c7)}
+  .login-box{background:#fff;border-radius:16px;padding:48px 40px;width:360px;
+    box-shadow:0 8px 40px rgba(0,0,0,.15);text-align:center}
+  .login-box h1{font-size:22px;font-weight:700;margin-bottom:6px;color:var(--primary)}
+  .login-box p{color:var(--muted);margin-bottom:28px;font-size:13px}
+  .login-box input{width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:var(--radius);
+    font-size:14px;margin-bottom:12px;outline:none;transition:border .2s}
+  .login-box input:focus{border-color:var(--primary)}
+  .login-box button{width:100%;padding:13px;background:var(--primary);color:#fff;border:none;
+    border-radius:var(--radius);font-size:15px;font-weight:600;cursor:pointer;transition:background .2s}
+  .login-box button:hover{background:var(--primary-dark)}
+  .login-error{color:var(--danger);font-size:13px;margin-bottom:10px;min-height:20px}
+
+  /* TOPBAR */
+  .topbar{background:var(--primary);color:#fff;padding:14px 28px;display:flex;
+    align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;
+    box-shadow:0 2px 8px rgba(0,0,0,.15)}
+  .topbar h1{font-size:17px;font-weight:700}
+  .topbar-right{display:flex;align-items:center;gap:16px}
+  .topbar a{color:rgba(255,255,255,.8);text-decoration:none;font-size:13px;cursor:pointer}
+  .topbar a:hover{color:#fff}
+
+  /* TABS */
+  .tab-bar{background:#fff;border-bottom:2px solid var(--border);padding:0 28px;display:flex;gap:0}
+  .tab-btn{padding:13px 22px;font-size:14px;font-weight:600;cursor:pointer;border:none;
+    background:none;color:var(--muted);border-bottom:3px solid transparent;margin-bottom:-2px;
+    transition:all .2s}
+  .tab-btn:hover{color:var(--primary)}
+  .tab-btn.active{color:var(--primary);border-bottom-color:var(--primary)}
+
+  .main{max-width:1340px;margin:0 auto;padding:24px 20px}
+
+  /* STATS */
+  .stats-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-bottom:24px}
+  .stat-card{background:var(--card);border-radius:var(--radius);padding:16px;
+    box-shadow:0 1px 4px rgba(0,0,0,.06);border:1px solid var(--border);text-align:center}
+  .stat-card .val{font-size:26px;font-weight:700}
+  .stat-card .lbl{font-size:11px;color:var(--muted);margin-top:4px;text-transform:uppercase;letter-spacing:.5px}
+  .stat-card.red .val{color:var(--danger)}  .stat-card.green .val{color:var(--success)}
+  .stat-card.blue .val{color:var(--info)}   .stat-card.purple .val{color:var(--primary)}
+  .stat-card.orange .val{color:var(--warning)}
+
+  /* PANEL */
+  .panel{background:var(--card);border-radius:var(--radius);border:1px solid var(--border);
+    box-shadow:0 1px 4px rgba(0,0,0,.06);margin-bottom:24px}
+  .panel-header{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;
+    align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
+  .panel-header h2{font-size:15px;font-weight:700}
+
+  /* CONTROLS */
+  .controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .controls input,.controls select{padding:7px 11px;border:1.5px solid var(--border);border-radius:8px;
+    font-size:13px;outline:none;transition:border .2s;background:#fff}
+  .controls input:focus,.controls select:focus{border-color:var(--primary)}
+  .controls input[type=text]{width:180px} .controls input[type=number]{width:110px}
+
+  /* BUTTONS */
+  .btn{padding:7px 15px;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;
+    transition:opacity .2s;display:inline-flex;align-items:center;gap:5px}
+  .btn:hover{opacity:.85} .btn:disabled{opacity:.5;cursor:not-allowed}
+  .btn-primary{background:var(--primary);color:#fff}  .btn-danger{background:var(--danger);color:#fff}
+  .btn-success{background:var(--success);color:#fff}  .btn-warning{background:var(--warning);color:#fff}
+  .btn-gray{background:#f3f4f6;color:var(--text)}
+  .btn-sm{padding:4px 9px;font-size:12px;border-radius:6px}
+
+  /* TABLE */
+  .table-wrap{overflow-x:auto}
+  table{width:100%;border-collapse:collapse}
+  th{background:#f8f9fc;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;
+    letter-spacing:.5px;padding:9px 13px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap}
+  td{padding:10px 13px;border-bottom:1px solid var(--border);vertical-align:middle}
+  tr:last-child td{border-bottom:none} tr:hover td{background:#fafbff}
+
+  /* BADGES */
+  .badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap}
+  .badge-open{background:#fff3cd;color:#856404}        .badge-hired{background:#cfe2ff;color:#084298}
+  .badge-arrived{background:#d1ecf1;color:#0c5460}     .badge-progress{background:#d4edda;color:#155724}
+  .badge-complete{background:#c3f7d9;color:#0a4a27}    .badge-cancelled{background:#f8d7da;color:#721c24}
+  .badge-closed{background:#e2e3e5;color:#383d41}      .badge-offered{background:#e2cfff;color:#4a1f99}
+  .badge-clear{background:#c3f7d9;color:#0a4a27}       .badge-pending{background:#fff3cd;color:#856404}
+  .badge-consider{background:#ffe5b4;color:#7a4f00}    .badge-suspended{background:#f8d7da;color:#721c24}
+  .badge-active{background:#d4edda;color:#155724}      .badge-inactive{background:#f8d7da;color:#721c24}
+  .badge-online{background:#d4edda;color:#155724}      .badge-offline{background:#e2e3e5;color:#383d41}
+
+  /* PAGINATION */
+  .pagination{display:flex;gap:5px;align-items:center;padding:12px 18px;border-top:1px solid var(--border);
+    justify-content:center;flex-wrap:wrap}
+  .page-btn{padding:4px 10px;border:1.5px solid var(--border);border-radius:7px;background:#fff;
+    cursor:pointer;font-size:13px;color:var(--text);transition:all .2s}
+  .page-btn:hover{border-color:var(--primary);color:var(--primary)}
+  .page-btn.active{background:var(--primary);color:#fff;border-color:var(--primary)}
+  .page-btn:disabled{opacity:.4;cursor:not-allowed}
+
+  /* MODAL */
+  .modal-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;
+    align-items:center;justify-content:center}
+  .modal-backdrop.open{display:flex}
+  .modal{background:#fff;border-radius:14px;padding:26px;width:520px;max-width:95vw;
+    max-height:90vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.2)}
+  .modal h3{font-size:16px;font-weight:700;margin-bottom:16px}
+  .modal-close{float:right;background:none;border:none;font-size:22px;cursor:pointer;
+    color:var(--muted);line-height:1;margin-top:-2px}
+  .form-group{margin-bottom:13px}
+  .form-group label{display:block;font-size:11px;font-weight:700;color:var(--muted);
+    text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px}
+  .form-group input,.form-group select,.form-group textarea{width:100%;padding:9px 12px;
+    border:1.5px solid var(--border);border-radius:8px;font-size:14px;outline:none;
+    transition:border .2s;font-family:inherit}
+  .form-group input:focus,.form-group select:focus,.form-group textarea:focus{border-color:var(--primary)}
+  .form-group textarea{resize:vertical;min-height:72px}
+  .modal-footer{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}
+  .info-row{display:flex;gap:8px;margin-bottom:7px;font-size:13px}
+  .info-label{color:var(--muted);width:110px;flex-shrink:0;font-weight:600;font-size:12px}
+
+  /* TOAST */
+  .toast{position:fixed;bottom:22px;right:22px;background:#1a1a2e;color:#fff;padding:11px 18px;
+    border-radius:10px;font-size:13px;font-weight:600;opacity:0;transform:translateY(8px);
+    transition:all .3s;z-index:999;max-width:300px;pointer-events:none}
+  .toast.show{opacity:1;transform:translateY(0)}
+  .toast.error{background:var(--danger)} .toast.success{background:var(--success)}
+
+  .empty{text-align:center;padding:44px 20px;color:var(--muted)}
+  .empty .icon{font-size:34px;margin-bottom:8px}
+  .spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.4);
+    border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  #dashboard{display:none}
+  .tab-pane{display:none} .tab-pane.active{display:block}
+
+  @media(max-width:640px){
+    .stats-grid{grid-template-columns:repeat(2,1fr)}
+    .panel-header{flex-direction:column;align-items:flex-start}
+    .tab-btn{padding:11px 14px;font-size:13px}
+  }
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div class="login-wrap" id="loginScreen">
+  <div class="login-box">
+    <h1>🍼 Sitters4Me</h1>
+    <p>Admin Portal — restricted access</p>
+    <div class="login-error" id="loginError"></div>
+    <input type="password" id="adminPass" placeholder="Admin password" autofocus>
+    <button onclick="doLogin()">Sign In →</button>
+  </div>
+</div>
+
+<!-- DASHBOARD -->
+<div id="dashboard">
+  <div class="topbar">
+    <h1>🍼 Sitters4Me Admin</h1>
+    <div class="topbar-right">
+      <span id="lastRefresh" style="font-size:12px;opacity:.7"></span>
+      <a onclick="doLogout()">Sign Out</a>
+    </div>
+  </div>
+
+  <!-- TAB BAR -->
+  <div class="tab-bar">
+    <button class="tab-btn active" onclick="switchTab('jobs')">📋 Jobs</button>
+    <button class="tab-btn" onclick="switchTab('sitters')">👩 Sitters</button>
+    <button class="tab-btn" onclick="switchTab('parents')">👨‍👩‍👧 Parents</button>
+  </div>
+
+  <div class="main">
+
+    <!-- STATS (always visible) -->
+    <div class="stats-grid">
+      <div class="stat-card">        <div class="val" id="s_total">—</div>    <div class="lbl">Total Jobs</div></div>
+      <div class="stat-card red">    <div class="val" id="s_active">—</div>   <div class="lbl">Active Jobs</div></div>
+      <div class="stat-card blue">   <div class="val" id="s_today">—</div>    <div class="lbl">Today</div></div>
+      <div class="stat-card green">  <div class="val" id="s_complete">—</div> <div class="lbl">Completed</div></div>
+      <div class="stat-card orange"> <div class="val" id="s_cancel">—</div>   <div class="lbl">Cancelled</div></div>
+      <div class="stat-card purple"> <div class="val" id="s_online">—</div>   <div class="lbl">Online Sitters</div></div>
+      <div class="stat-card blue">   <div class="val" id="s_parents">—</div>  <div class="lbl">Parents</div></div>
+      <div class="stat-card purple"> <div class="val" id="s_sitters">—</div>  <div class="lbl">Sitters</div></div>
+      <div class="stat-card orange"> <div class="val" id="s_payouts">—</div>  <div class="lbl">Pending Payouts</div></div>
+    </div>
+
+    <!-- ── JOBS TAB ── -->
+    <div class="tab-pane active" id="tab-jobs">
+      <div class="panel">
+        <div class="panel-header">
+          <h2>📋 Jobs</h2>
+          <div class="controls">
+            <input type="number" id="searchJobId" placeholder="Job ID" min="1">
+            <select id="filterStatus">
+              <option value="all">All Statuses</option>
+              <option value="Open">Open</option>
+              <option value="Sitter hired">Sitter Hired</option>
+              <option value="Sitter offered">Sitter Offered</option>
+              <option value="Sitter arrived">Sitter Arrived</option>
+              <option value="In progress">In Progress</option>
+              <option value="Complete">Complete</option>
+              <option value="Cancelled">Cancelled</option>
+              <option value="Closed">Closed</option>
+            </select>
+            <button class="btn btn-primary" onclick="loadJobs(1)">🔍 Search</button>
+            <button class="btn btn-danger" id="closeAllBtn" onclick="closeAllActive()">⛔ Close All Active</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th>ID</th><th>Status</th><th>Parent</th><th>Sitter</th>
+              <th>Kids</th><th>Posted</th><th>Scheduled</th><th>Charge</th><th>Actions</th>
+            </tr></thead>
+            <tbody id="jobsBody"><tr><td colspan="9" class="empty"><div class="icon">⏳</div>Loading…</td></tr></tbody>
+          </table>
+        </div>
+        <div class="pagination" id="jobsPagination"></div>
+      </div>
+    </div>
+
+    <!-- ── SITTERS TAB ── -->
+    <div class="tab-pane" id="tab-sitters">
+      <div class="panel">
+        <div class="panel-header">
+          <h2>👩 Sitters</h2>
+          <div class="controls">
+            <input type="text" id="searchSitter" placeholder="Name, email or phone…">
+            <button class="btn btn-primary" onclick="loadSitters(1)">🔍 Search</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th>ID</th><th>Name</th><th>Email</th><th>City</th><th>Rate</th>
+              <th>Online</th><th>Account</th><th>BG Check</th><th>Jobs Done</th><th>Rating</th><th>Actions</th>
+            </tr></thead>
+            <tbody id="sittersBody"><tr><td colspan="11" class="empty"><div class="icon">⏳</div>Loading…</td></tr></tbody>
+          </table>
+        </div>
+        <div class="pagination" id="sittersPagination"></div>
+      </div>
+    </div>
+
+    <!-- ── PARENTS TAB ── -->
+    <div class="tab-pane" id="tab-parents">
+      <div class="panel">
+        <div class="panel-header">
+          <h2>👨‍👩‍👧 Parents</h2>
+          <div class="controls">
+            <input type="text" id="searchParent" placeholder="Name, email or phone…">
+            <button class="btn btn-primary" onclick="loadParents(1)">🔍 Search</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th>ID</th><th>Name</th><th>Email</th><th>City</th>
+              <th>Total Jobs</th><th>Completed</th><th>Cancels</th><th>Account</th><th>Actions</th>
+            </tr></thead>
+            <tbody id="parentsBody"><tr><td colspan="9" class="empty"><div class="icon">⏳</div>Loading…</td></tr></tbody>
+          </table>
+        </div>
+        <div class="pagination" id="parentsPagination"></div>
+      </div>
+    </div>
+
+  </div><!-- /main -->
+</div>
+
+<!-- EDIT JOB MODAL -->
+<div class="modal-backdrop" id="editJobModal">
+  <div class="modal">
+    <h3>✏️ Edit Job <span id="editJobIdLabel"></span><button class="modal-close" onclick="closeModal('editJobModal')">×</button></h3>
+    <div id="editJobInfo"></div>
+    <hr style="margin:12px 0;border:none;border-top:1px solid var(--border)">
+    <div class="form-group"><label>Status</label>
+      <select id="editJobStatus">
+        <option value="Open">Open</option><option value="Sitter hired">Sitter Hired</option>
+        <option value="Sitter offered">Sitter Offered</option><option value="Sitter arrived">Sitter Arrived</option>
+        <option value="In progress">In Progress</option><option value="Complete">Complete</option>
+        <option value="Cancelled">Cancelled</option><option value="Closed">Closed</option>
+      </select>
+    </div>
+    <div class="form-group"><label>Kids</label><input type="number" id="editJobKids" min="1" max="10"></div>
+    <div class="form-group"><label>Charge Amount ($)</label><input type="number" id="editJobCharge" step="0.01" min="0"></div>
+    <div class="form-group"><label>Admin Notes</label><textarea id="editJobNotes"></textarea></div>
+    <div class="modal-footer">
+      <button class="btn btn-gray" onclick="closeModal('editJobModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveJobEdit()">💾 Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- CANCEL JOB MODAL -->
+<div class="modal-backdrop" id="cancelJobModal">
+  <div class="modal">
+    <h3>❌ Cancel Job <span id="cancelJobLabel"></span><button class="modal-close" onclick="closeModal('cancelJobModal')">×</button></h3>
+    <p style="color:var(--muted);margin-bottom:14px;font-size:13px">Parent and sitter will be notified via push notification.</p>
+    <div class="form-group"><label>Reason</label><input type="text" id="cancelJobReason" value="Cancelled by admin"></div>
+    <div class="modal-footer">
+      <button class="btn btn-gray" onclick="closeModal('cancelJobModal')">Back</button>
+      <button class="btn btn-danger" onclick="confirmCancelJob()">⛔ Confirm Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT SITTER MODAL -->
+<div class="modal-backdrop" id="editSitterModal">
+  <div class="modal">
+    <h3>✏️ Edit Sitter <span id="editSitterLabel"></span><button class="modal-close" onclick="closeModal('editSitterModal')">×</button></h3>
+    <div id="editSitterInfo"></div>
+    <hr style="margin:12px 0;border:none;border-top:1px solid var(--border)">
+    <div class="form-group"><label>Background Check Status</label>
+      <select id="editSitterBg">
+        <option value="pending">⏳ Pending</option>
+        <option value="clear">✅ Clear (Approved)</option>
+        <option value="consider">⚠️ Consider</option>
+        <option value="suspended">🚫 Suspended</option>
+      </select>
+    </div>
+    <div class="form-group"><label>Account Status</label>
+      <select id="editSitterActive">
+        <option value="1">✅ Active</option>
+        <option value="0">🚫 Suspended</option>
+      </select>
+    </div>
+    <div class="form-group"><label>Admin Notes (internal only)</label>
+      <textarea id="editSitterNotes" placeholder="Internal notes about this sitter…"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-gray" onclick="closeModal('editSitterModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveSitterEdit()">💾 Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT PARENT MODAL -->
+<div class="modal-backdrop" id="editParentModal">
+  <div class="modal">
+    <h3>✏️ Edit Parent <span id="editParentLabel"></span><button class="modal-close" onclick="closeModal('editParentModal')">×</button></h3>
+    <div id="editParentInfo"></div>
+    <hr style="margin:12px 0;border:none;border-top:1px solid var(--border)">
+    <div class="form-group"><label>Account Status</label>
+      <select id="editParentActive">
+        <option value="1">✅ Active</option>
+        <option value="0">🚫 Suspended</option>
+      </select>
+    </div>
+    <div class="form-group"><label>Cancellation Count</label>
+      <input type="number" id="editParentCancelCount" min="0">
+    </div>
+    <div class="form-group"><label>Admin Notes (internal only)</label>
+      <textarea id="editParentNotes" placeholder="Internal notes about this parent…"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-gray" onclick="closeModal('editParentModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveParentEdit()">💾 Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API       = 'https://sitters4me.com/api/jobs.php';
+const ADMIN_KEY = 'S4M_Admin_2026!';
+const PASS      = 'S4M_Admin_2026!';
+
+let jobPage = 1, sitterPage = 1, parentPage = 1;
+let editingJobId = null, cancellingJobId = null;
+let editingSitterId = null, editingParentId = null;
+let currentTab = 'jobs';
+
+// ── LOGIN ─────────────────────────────────────────────────────
+function doLogin() {
+  if (document.getElementById('adminPass').value === PASS) {
+    sessionStorage.setItem('s4m_admin','1');
+    showDashboard();
+  } else {
+    document.getElementById('loginError').textContent = 'Incorrect password.';
+    document.getElementById('adminPass').value = '';
+  }
+}
+document.getElementById('adminPass').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+
+function doLogout() {
+  sessionStorage.removeItem('s4m_admin');
+  document.getElementById('loginScreen').style.display = 'flex';
+  document.getElementById('dashboard').style.display   = 'none';
+  document.getElementById('adminPass').value = '';
+}
+
+function showDashboard() {
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('dashboard').style.display   = 'block';
+  loadStats();
+  loadJobs(1);
+}
+
+if (sessionStorage.getItem('s4m_admin') === '1') {
+  setTimeout(showDashboard, 0);
+}
+
+// ── TABS ──────────────────────────────────────────────────────
+function switchTab(name) {
+  currentTab = name;
+  document.querySelectorAll('.tab-btn').forEach((b,i) => b.classList.toggle('active', ['jobs','sitters','parents'][i] === name));
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  if (name === 'sitters' && document.getElementById('sittersBody').innerHTML.includes('Loading')) loadSitters(1);
+  if (name === 'parents' && document.getElementById('parentsBody').innerHTML.includes('Loading')) loadParents(1);
+}
+
+// ── API HELPER ────────────────────────────────────────────────
+async function api(action, body = {}) {
+  const res = await fetch(`${API}?action=${action}`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({...body, admin_key: ADMIN_KEY}),
+  });
+  return res.json();
+}
+
+// ── STATS ─────────────────────────────────────────────────────
+async function loadStats() {
+  try {
+    const d = await api('admin_stats');
+    if (!d.success) return;
+    const s = d.data;
+    document.getElementById('s_total').textContent    = s.total_jobs     ?? '—';
+    document.getElementById('s_active').textContent   = s.active_jobs    ?? '—';
+    document.getElementById('s_today').textContent    = s.today_jobs     ?? '—';
+    document.getElementById('s_complete').textContent = s.completed_jobs ?? '—';
+    document.getElementById('s_cancel').textContent   = s.cancelled_jobs ?? '—';
+    document.getElementById('s_online').textContent   = s.online_sitters ?? '—';
+    document.getElementById('s_parents').textContent  = s.total_parents  ?? '—';
+    document.getElementById('s_sitters').textContent  = s.total_sitters  ?? '—';
+    document.getElementById('s_payouts').textContent  = s.pending_payouts ?? '—';
+    document.getElementById('lastRefresh').textContent = 'Refreshed ' + new Date().toLocaleTimeString();
+  } catch {}
+}
+
+// ── JOBS ──────────────────────────────────────────────────────
+async function loadJobs(page = 1) {
+  jobPage = page;
+  const jobId  = parseInt(document.getElementById('searchJobId').value) || 0;
+  const status = document.getElementById('filterStatus').value;
+  document.getElementById('jobsBody').innerHTML = '<tr><td colspan="9" class="empty"><div class="icon">⏳</div>Loading…</td></tr>';
+  document.getElementById('jobsPagination').innerHTML = '';
+  try {
+    const body = { status, page };
+    if (jobId > 0) body.job_id = jobId;
+    const d = await api('admin_list_jobs', body);
+    if (!d.success) { showToast(d.error || 'Failed to load jobs', 'error'); return; }
+    renderJobsTable(d.data.jobs);
+    renderPagination('jobsPagination', d.data.total_pages, page, loadJobs);
+  } catch(e) { showToast('Network error', 'error'); }
+}
+
+function renderJobsTable(jobs) {
+  if (!jobs?.length) {
+    document.getElementById('jobsBody').innerHTML = '<tr><td colspan="9" class="empty"><div class="icon">📭</div>No jobs found</td></tr>';
+    return;
+  }
+  document.getElementById('jobsBody').innerHTML = jobs.map(j => {
+    const parent = esc(`${j.parent_fname||''} ${j.parent_lname||''}`.trim() || `Parent #${j.parent_id}`);
+    const sitter = j.sitter_id
+      ? esc(`${j.sitter_fname||''} ${j.sitter_lname||''}`.trim() || `Sitter #${j.sitter_id}`)
+      : '<span style="color:var(--muted)">—</span>';
+    const canCancel = !['Complete','Cancelled','Closed'].includes(j.status);
+    return `<tr>
+      <td><strong>#${j.id}</strong></td>
+      <td>${jobBadge(j.status)}</td>
+      <td>${parent}<br><small style="color:var(--muted)">${esc(j.parent_email||'')}</small></td>
+      <td>${sitter}</td>
+      <td style="text-align:center">${j.kids||1}</td>
+      <td style="white-space:nowrap">${fmtDate(j.post_time)}</td>
+      <td style="white-space:nowrap">${j.scheduled_time ? fmtDate(j.scheduled_time) : '<span style="color:var(--muted)">Live</span>'}</td>
+      <td>$${parseFloat(j.charge_amt||0).toFixed(2)}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-primary btn-sm" onclick='openEditJob(${JSON.stringify(j)})'>✏️</button>
+        ${canCancel ? `<button class="btn btn-danger btn-sm" onclick="openCancelJob(${j.id})">⛔</button>` : ''}
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function openEditJob(j) {
+  editingJobId = j.id;
+  document.getElementById('editJobIdLabel').textContent = `#${j.id}`;
+  document.getElementById('editJobInfo').innerHTML = `
+    <div class="info-row"><span class="info-label">Parent</span><span>${esc(`${j.parent_fname||''} ${j.parent_lname||''}`.trim())} ${j.parent_email?'('+esc(j.parent_email)+')':''}</span></div>
+    <div class="info-row"><span class="info-label">Sitter</span><span>${j.sitter_id ? esc(`${j.sitter_fname||''} ${j.sitter_lname||''}`.trim()||`Sitter #${j.sitter_id}`) : 'Unassigned'}</span></div>
+    <div class="info-row"><span class="info-label">Posted</span><span>${fmtDate(j.post_time)}</span></div>
+    ${j.scheduled_time ? `<div class="info-row"><span class="info-label">Scheduled</span><span>${fmtDate(j.scheduled_time)}</span></div>` : ''}`;
+  document.getElementById('editJobStatus').value  = j.status || 'Open';
+  document.getElementById('editJobKids').value    = j.kids || 1;
+  document.getElementById('editJobCharge').value  = parseFloat(j.charge_amt||0).toFixed(2);
+  document.getElementById('editJobNotes').value   = j.notes || '';
+  document.getElementById('editJobModal').classList.add('open');
+}
+
+async function saveJobEdit() {
+  try {
+    const d = await api('admin_update_job', {
+      job_id: editingJobId,
+      status: document.getElementById('editJobStatus').value,
+      kids: parseInt(document.getElementById('editJobKids').value)||1,
+      charge_amt: parseFloat(document.getElementById('editJobCharge').value)||0,
+      notes: document.getElementById('editJobNotes').value,
+    });
+    if (d.success) { showToast(`Job #${editingJobId} updated ✓`,'success'); closeModal('editJobModal'); loadJobs(jobPage); loadStats(); }
+    else showToast(d.error||'Update failed','error');
+  } catch { showToast('Network error','error'); }
+}
+
+function openCancelJob(id) {
+  cancellingJobId = id;
+  document.getElementById('cancelJobLabel').textContent = `#${id}`;
+  document.getElementById('cancelJobReason').value = 'Cancelled by admin';
+  document.getElementById('cancelJobModal').classList.add('open');
+}
+
+async function confirmCancelJob() {
+  try {
+    const d = await api('admin_cancel_job', { job_id: cancellingJobId, reason: document.getElementById('cancelJobReason').value || 'Cancelled by admin' });
+    if (d.success) { showToast(`Job #${cancellingJobId} cancelled ✓`,'success'); closeModal('cancelJobModal'); loadJobs(jobPage); loadStats(); }
+    else showToast(d.error||'Failed','error');
+  } catch { showToast('Network error','error'); }
+}
+
+async function closeAllActive() {
+  if (!confirm('⚠️ Cancel ALL active jobs (Open, In Progress, Sitter Hired, etc.)?\n\nParents and sitters will be notified.')) return;
+  const btn = document.getElementById('closeAllBtn');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Closing…';
+  try {
+    const d = await api('admin_close_all_active');
+    showToast(d.success ? (d.message||'Done ✓') : (d.error||'Failed'), d.success?'success':'error');
+    if (d.success) { loadJobs(jobPage); loadStats(); }
+  } catch { showToast('Network error','error'); }
+  finally { btn.disabled = false; btn.innerHTML = '⛔ Close All Active'; }
+}
+
+// ── SITTERS ───────────────────────────────────────────────────
+async function loadSitters(page = 1) {
+  sitterPage = page;
+  const search = document.getElementById('searchSitter').value.trim();
+  document.getElementById('sittersBody').innerHTML = '<tr><td colspan="11" class="empty"><div class="icon">⏳</div>Loading…</td></tr>';
+  document.getElementById('sittersPagination').innerHTML = '';
+  try {
+    const d = await api('admin_list_sitters', { search, page });
+    if (!d.success) { showToast(d.error||'Failed','error'); return; }
+    renderSittersTable(d.data.sitters);
+    renderPagination('sittersPagination', d.data.total_pages, page, loadSitters);
+  } catch { showToast('Network error','error'); }
+}
+
+function bgBadge(status) {
+  const map = { clear:'badge-clear', pending:'badge-pending', consider:'badge-consider', suspended:'badge-suspended' };
+  const labels = { clear:'✅ Clear', pending:'⏳ Pending', consider:'⚠️ Consider', suspended:'🚫 Suspended' };
+  return `<span class="badge ${map[status]||'badge-pending'}">${labels[status]||status}</span>`;
+}
+
+function renderSittersTable(sitters) {
+  if (!sitters?.length) {
+    document.getElementById('sittersBody').innerHTML = '<tr><td colspan="11" class="empty"><div class="icon">📭</div>No sitters found</td></tr>';
+    return;
+  }
+  document.getElementById('sittersBody').innerHTML = sitters.map(s => {
+    const name    = esc(`${s.fname||''} ${s.lname||''}`.trim());
+    const isActive= parseInt(s.is_active ?? 1) === 1;
+    const isOnline= parseInt(s.online ?? 0) === 1;
+    const rating  = s.avg_rating > 0 ? `⭐ ${parseFloat(s.avg_rating).toFixed(1)} (${s.review_count})` : '—';
+    return `<tr>
+      <td><strong>#${s.id}</strong></td>
+      <td>${name}<br><small style="color:var(--muted)">${esc(s.phone||'')}</small></td>
+      <td><small>${esc(s.email||'')}</small></td>
+      <td>${esc(s.city||'')}${s.state?', '+esc(s.state):''}</td>
+      <td>$${parseFloat(s.minrate||0).toFixed(0)}/hr</td>
+      <td><span class="badge ${isOnline?'badge-online':'badge-offline'}">${isOnline?'🟢 Online':'⚫ Offline'}</span></td>
+      <td><span class="badge ${isActive?'badge-active':'badge-inactive'}">${isActive?'Active':'Suspended'}</span></td>
+      <td>${bgBadge(s.checkr_status||'pending')}</td>
+      <td style="text-align:center">${s.completed_jobs||0}</td>
+      <td>${rating}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-primary btn-sm" onclick='openEditSitter(${JSON.stringify(s)})'>✏️ Edit</button>
+        ${isActive
+          ? `<button class="btn btn-danger btn-sm" onclick="quickSuspendSitter(${s.id},'${esc(name)}')">🚫 Suspend</button>`
+          : `<button class="btn btn-success btn-sm" onclick="quickActivateSitter(${s.id},'${esc(name)}')">✅ Activate</button>`
+        }
+        ${s.checkr_status !== 'clear' ? `<button class="btn btn-success btn-sm" onclick="quickApproveBg(${s.id},'${esc(name)}')">✅ Approve BG</button>` : ''}
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function openEditSitter(s) {
+  editingSitterId = s.id;
+  const name = `${s.fname||''} ${s.lname||''}`.trim();
+  document.getElementById('editSitterLabel').textContent = `— ${name}`;
+  document.getElementById('editSitterInfo').innerHTML = `
+    <div class="info-row"><span class="info-label">Name</span><span>${esc(name)}</span></div>
+    <div class="info-row"><span class="info-label">Email</span><span>${esc(s.email||'—')}</span></div>
+    <div class="info-row"><span class="info-label">Phone</span><span>${esc(s.phone||'—')}</span></div>
+    <div class="info-row"><span class="info-label">Location</span><span>${esc(s.city||'')}${s.state?', '+esc(s.state):''}</span></div>
+    <div class="info-row"><span class="info-label">Rate</span><span>$${parseFloat(s.minrate||0).toFixed(0)}/hr</span></div>
+    <div class="info-row"><span class="info-label">Jobs Done</span><span>${s.completed_jobs||0}</span></div>`;
+  document.getElementById('editSitterBg').value     = s.checkr_status || 'pending';
+  document.getElementById('editSitterActive').value = String(parseInt(s.is_active??1));
+  document.getElementById('editSitterNotes').value  = s.admin_notes || '';
+  document.getElementById('editSitterModal').classList.add('open');
+}
+
+async function saveSitterEdit() {
+  try {
+    const d = await api('admin_update_sitter', {
+      sitter_id:     editingSitterId,
+      checkr_status: document.getElementById('editSitterBg').value,
+      is_active:     parseInt(document.getElementById('editSitterActive').value),
+      admin_notes:   document.getElementById('editSitterNotes').value,
+    });
+    if (d.success) { showToast(d.message||'Sitter updated ✓','success'); closeModal('editSitterModal'); loadSitters(sitterPage); loadStats(); }
+    else showToast(d.error||'Update failed','error');
+  } catch { showToast('Network error','error'); }
+}
+
+async function quickSuspendSitter(id, name) {
+  if (!confirm(`Suspend sitter ${name}?\n\nThey will be forced offline and cannot go back online.`)) return;
+  try {
+    const d = await api('admin_update_sitter', { sitter_id: id, is_active: 0 });
+    if (d.success) { showToast(`${name} suspended ✓`,'success'); loadSitters(sitterPage); loadStats(); }
+    else showToast(d.error||'Failed','error');
+  } catch { showToast('Network error','error'); }
+}
+
+async function quickActivateSitter(id, name) {
+  try {
+    const d = await api('admin_update_sitter', { sitter_id: id, is_active: 1 });
+    if (d.success) { showToast(`${name} activated ✓`,'success'); loadSitters(sitterPage); }
+    else showToast(d.error||'Failed','error');
+  } catch { showToast('Network error','error'); }
+}
+
+async function quickApproveBg(id, name) {
+  if (!confirm(`Approve background check for ${name}?`)) return;
+  try {
+    const d = await api('admin_update_sitter', { sitter_id: id, checkr_status: 'clear' });
+    if (d.success) { showToast(`${name} BG check approved ✓`,'success'); loadSitters(sitterPage); }
+    else showToast(d.error||'Failed','error');
+  } catch { showToast('Network error','error'); }
+}
+
+// ── PARENTS ───────────────────────────────────────────────────
+async function loadParents(page = 1) {
+  parentPage = page;
+  const search = document.getElementById('searchParent').value.trim();
+  document.getElementById('parentsBody').innerHTML = '<tr><td colspan="9" class="empty"><div class="icon">⏳</div>Loading…</td></tr>';
+  document.getElementById('parentsPagination').innerHTML = '';
+  try {
+    const d = await api('admin_list_parents', { search, page });
+    if (!d.success) { showToast(d.error||'Failed','error'); return; }
+    renderParentsTable(d.data.parents);
+    renderPagination('parentsPagination', d.data.total_pages, page, loadParents);
+  } catch { showToast('Network error','error'); }
+}
+
+function renderParentsTable(parents) {
+  if (!parents?.length) {
+    document.getElementById('parentsBody').innerHTML = '<tr><td colspan="9" class="empty"><div class="icon">📭</div>No parents found</td></tr>';
+    return;
+  }
+  document.getElementById('parentsBody').innerHTML = parents.map(p => {
+    const name    = esc(`${p.fname||''} ${p.lname||''}`.trim());
+    const isActive= parseInt(p.is_active??1) === 1;
+    return `<tr>
+      <td><strong>#${p.id}</strong></td>
+      <td>${name}<br><small style="color:var(--muted)">${esc(p.phone||'')}</small></td>
+      <td><small>${esc(p.email||'')}</small></td>
+      <td>${esc(p.city||'')}${p.state?', '+esc(p.state):''}</td>
+      <td style="text-align:center">${p.total_jobs||0}</td>
+      <td style="text-align:center">${p.completed_jobs||0}</td>
+      <td style="text-align:center">${p.cancel_count||0}</td>
+      <td><span class="badge ${isActive?'badge-active':'badge-inactive'}">${isActive?'Active':'Suspended'}</span></td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-primary btn-sm" onclick='openEditParent(${JSON.stringify(p)})'>✏️ Edit</button>
+        ${isActive
+          ? `<button class="btn btn-danger btn-sm" onclick="quickSuspendParent(${p.id},'${esc(name)}')">🚫 Suspend</button>`
+          : `<button class="btn btn-success btn-sm" onclick="quickActivateParent(${p.id},'${esc(name)}')">✅ Activate</button>`
+        }
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function openEditParent(p) {
+  editingParentId = p.id;
+  const name = `${p.fname||''} ${p.lname||''}`.trim();
+  document.getElementById('editParentLabel').textContent = `— ${name}`;
+  document.getElementById('editParentInfo').innerHTML = `
+    <div class="info-row"><span class="info-label">Name</span><span>${esc(name)}</span></div>
+    <div class="info-row"><span class="info-label">Email</span><span>${esc(p.email||'—')}</span></div>
+    <div class="info-row"><span class="info-label">Phone</span><span>${esc(p.phone||'—')}</span></div>
+    <div class="info-row"><span class="info-label">Location</span><span>${esc(p.city||'')}${p.state?', '+esc(p.state):''}</span></div>
+    <div class="info-row"><span class="info-label">Total Jobs</span><span>${p.total_jobs||0} (${p.completed_jobs||0} completed)</span></div>`;
+  document.getElementById('editParentActive').value      = String(parseInt(p.is_active??1));
+  document.getElementById('editParentCancelCount').value = p.cancel_count || 0;
+  document.getElementById('editParentNotes').value       = p.admin_notes || '';
+  document.getElementById('editParentModal').classList.add('open');
+}
+
+async function saveParentEdit() {
+  try {
+    const d = await api('admin_update_parent', {
+      parent_id:    editingParentId,
+      is_active:    parseInt(document.getElementById('editParentActive').value),
+      cancel_count: parseInt(document.getElementById('editParentCancelCount').value)||0,
+      admin_notes:  document.getElementById('editParentNotes').value,
+    });
+    if (d.success) { showToast(d.message||'Parent updated ✓','success'); closeModal('editParentModal'); loadParents(parentPage); }
+    else showToast(d.error||'Failed','error');
+  } catch { showToast('Network error','error'); }
+}
+
+async function quickSuspendParent(id, name) {
+  if (!confirm(`Suspend parent ${name}?\n\nThey will not be able to make new bookings.`)) return;
+  try {
+    const d = await api('admin_update_parent', { parent_id: id, is_active: 0 });
+    if (d.success) { showToast(`${name} suspended ✓`,'success'); loadParents(parentPage); }
+    else showToast(d.error||'Failed','error');
+  } catch { showToast('Network error','error'); }
+}
+
+async function quickActivateParent(id, name) {
+  try {
+    const d = await api('admin_update_parent', { parent_id: id, is_active: 1 });
+    if (d.success) { showToast(`${name} activated ✓`,'success'); loadParents(parentPage); }
+    else showToast(d.error||'Failed','error');
+  } catch { showToast('Network error','error'); }
+}
+
+// ── SHARED PAGINATION ─────────────────────────────────────────
+function renderPagination(containerId, totalPages, current, loadFn) {
+  const el = document.getElementById(containerId);
+  if (totalPages <= 1) { el.innerHTML = ''; return; }
+  let h = `<button class="page-btn" onclick="${loadFn.name}(${current-1})" ${current===1?'disabled':''}>←</button>`;
+  for (let i = 1; i <= totalPages; i++) {
+    if (i===1||i===totalPages||Math.abs(i-current)<=2)
+      h += `<button class="page-btn ${i===current?'active':''}" onclick="${loadFn.name}(${i})">${i}</button>`;
+    else if (Math.abs(i-current)===3)
+      h += `<span style="color:var(--muted);padding:0 4px">…</span>`;
+  }
+  h += `<button class="page-btn" onclick="${loadFn.name}(${current+1})" ${current===totalPages?'disabled':''}>→</button>`;
+  el.innerHTML = h;
+}
+
+// ── JOB STATUS BADGE ──────────────────────────────────────────
+function jobBadge(status) {
+  const map = {
+    'Open':'badge-open','Sitter hired':'badge-hired','Sitter offered':'badge-offered',
+    'Sitter arrived':'badge-arrived','In progress':'badge-progress',
+    'Complete':'badge-complete','Cancelled':'badge-cancelled','Closed':'badge-closed',
+  };
+  return `<span class="badge ${map[status]||'badge-closed'}">${status||'—'}</span>`;
+}
+
+// ── DATE FORMAT ───────────────────────────────────────────────
+function fmtDate(dt) {
+  if (!dt) return '—';
+  try {
+    const d = new Date(dt.replace(' ','T') + (dt.includes('Z')?'':'Z'));
+    return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'})
+      + ' ' + d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+  } catch { return dt; }
+}
+
+// ── MODAL HELPERS ─────────────────────────────────────────────
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-backdrop').forEach(el => {
+  el.addEventListener('click', e => { if(e.target===el) el.classList.remove('open'); });
+});
+
+// ── TOAST ─────────────────────────────────────────────────────
+let toastTimer;
+function showToast(msg, type='success') {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = `toast ${type} show`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 3500);
+}
+
+// ── UTILS ─────────────────────────────────────────────────────
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// ── SEARCH ON ENTER ───────────────────────────────────────────
+document.getElementById('searchJobId').addEventListener('keydown',  e => { if(e.key==='Enter') loadJobs(1); });
+document.getElementById('filterStatus').addEventListener('change',  () => loadJobs(1));
+document.getElementById('searchSitter').addEventListener('keydown', e => { if(e.key==='Enter') loadSitters(1); });
+document.getElementById('searchParent').addEventListener('keydown', e => { if(e.key==='Enter') loadParents(1); });
+
+// ── AUTO REFRESH ──────────────────────────────────────────────
+setInterval(() => { if(sessionStorage.getItem('s4m_admin')==='1') loadStats(); }, 60_000);
+</script>
+</body>
+</html>

@@ -110,6 +110,23 @@ function ensureExtraColumns(){
     addCol('jobs','notes',                   "TEXT DEFAULT NULL COMMENT 'Parent notes / special instructions'");
     addCol('jobs','tip_amount',              "DECIMAL(8,2) DEFAULT 0.00 COMMENT 'Optional tip charged to parent'");
     addCol('jobs','preferred_sitter_id',     "INT DEFAULT NULL COMMENT 'Book Again: requested sitter ID'");
+    // Contact / profile fields that may be missing from original schema
+    addCol('sitters','phone',                "VARCHAR(30)  DEFAULT NULL COMMENT 'Contact phone number'");
+    addCol('parents','phone',                "VARCHAR(30)  DEFAULT NULL COMMENT 'Contact phone number'");
+    addCol('parents','city',                 "VARCHAR(80)  DEFAULT NULL COMMENT 'Parent city'");
+    addCol('parents','state',                "VARCHAR(50)  DEFAULT NULL COMMENT 'Parent state'");
+    addCol('parents','address',              "VARCHAR(255) DEFAULT NULL COMMENT 'Parent street address'");
+    addCol('parents','zipcode',              "VARCHAR(20)  DEFAULT NULL COMMENT 'Parent zip/postal code'");
+    addCol('parents','kids',                 "TINYINT DEFAULT 1 COMMENT 'Number of children'");
+    addCol('parents','image',                "VARCHAR(255) DEFAULT NULL COMMENT 'Profile photo path'");
+    addCol('sitters','city',                 "VARCHAR(80)  DEFAULT NULL COMMENT 'Sitter city'");
+    addCol('sitters','state',                "VARCHAR(50)  DEFAULT NULL COMMENT 'Sitter state'");
+    // Admin: active/suspended flag for sitters and parents
+    addCol('sitters','is_active',            "TINYINT DEFAULT 1 COMMENT '1=active, 0=suspended by admin'");
+    addCol('parents','is_active',            "TINYINT DEFAULT 1 COMMENT '1=active, 0=suspended by admin'");
+    // Admin notes on sitters/parents
+    addCol('sitters','admin_notes',          "TEXT DEFAULT NULL COMMENT 'Internal admin notes'");
+    addCol('parents','admin_notes',          "TEXT DEFAULT NULL COMMENT 'Internal admin notes'");
 }
 
 // ── Ensure payout_requests table exists ──────────────────────
@@ -305,6 +322,7 @@ $action = $_GET['action'] ?? ($body['action'] ?? '');
 // Run once per request — adds columns/tables if missing
 ensureExtraColumns();
 ensurePaymentsTable();
+ensurePayoutTable();     // ensures payout_requests table exists for admin_stats
 
 try {
 
@@ -334,6 +352,14 @@ switch ($action) {
         $lat       = (float)($body['lat']     ?? 0);
         $lng       = (float)($body['lng']     ?? 0);
         if (!$sitter_id) err('Missing sitter_id');
+
+        // Block suspended sitters from going online
+        if ($online === 1) {
+            $sitterCheck = row("SELECT COALESCE(is_active,1) AS is_active FROM sitters WHERE id=?", [$sitter_id]);
+            if ($sitterCheck && (int)$sitterCheck['is_active'] === 0) {
+                err('Your account has been suspended. Please contact support at support@sitters4me.com.');
+            }
+        }
 
         // Update user table — stamp last_seen when going online so we appear on parent map immediately
         $lastSeenSql = $online ? ', last_seen=NOW()' : '';
@@ -1092,6 +1118,38 @@ switch ($action) {
         }, $jobs);
         ok($jobs, count($jobs).' upcoming job(s)');
 
+    // ── GET PARENT UPCOMING SCHEDULED JOBS ───────────────────
+    // Returns future scheduled jobs + any currently-active scheduled jobs
+    case 'get_parent_scheduled':
+        $parent_id = (int)($body['parent_id'] ?? 0);
+        if (!$parent_id) err('Missing parent_id');
+        $jobs = rows("
+            SELECT j.id, j.kids, j.children_ages, j.address, j.city, j.state,
+                   j.scheduled_time, j.duration_hours, j.notes, j.status,
+                   j.sitter_id,
+                   COALESCE(s.minrate, 0) AS rate,
+                   CONCAT(s.fname, ' ', s.lname) AS sitter_name,
+                   s.image AS sitter_image
+            FROM jobs j
+            LEFT JOIN sitters s ON s.id = j.sitter_id
+            WHERE j.parent_id = ?
+              AND j.scheduled_time IS NOT NULL
+              AND (
+                  (j.status IN ('Scheduled','Sitter hired') AND j.scheduled_time > NOW())
+                  OR j.status IN ('Sitter arrived','In progress')
+              )
+            ORDER BY j.scheduled_time ASC
+            LIMIT 20
+        ", [$parent_id]);
+        $jobs = array_map(function($j) {
+            $ages = !empty($j['children_ages']) ? (json_decode($j['children_ages'],true) ?: []) : [];
+            return array_merge($j, [
+                'children_ages'  => $ages,
+                'scheduled_time' => utcIso($j['scheduled_time'] ?? null),
+            ]);
+        }, $jobs);
+        ok($jobs, count($jobs).' upcoming job(s)');
+
     // ── GET SITTER ACTIVE JOB ────────────────────────────────
     case 'get_sitter_active_job':
         $sitter_id = (int)($body['sitter_id'] ?? 0);
@@ -1110,7 +1168,7 @@ switch ($action) {
                    s.minrate AS sitter_minrate,
                    COALESCE(s.additional_child_rate, 0) AS additional_child_rate,
                    p.fname AS parent_fname, p.lname AS parent_lname,
-                   p.cellphone AS parent_phone, p.homephone AS parent_home_phone,
+                   IFNULL(p.phone,'') AS parent_phone,
                    p.image AS parent_image
             FROM jobs j
             LEFT JOIN sitters s ON s.id = j.sitter_id
@@ -1122,7 +1180,6 @@ switch ($action) {
         ", [$sitter_id]);
         if (!$job) err('No active job found');
         $job['parent_name']  = trim($job['parent_fname'].' '.$job['parent_lname']);
-        $job['parent_phone'] = $job['parent_phone'] ?: $job['parent_home_phone'] ?: '';
         // Decode children ages
         if (!empty($job['children_ages'])) {
             $job['children_ages'] = json_decode($job['children_ages'], true) ?: [];
@@ -1366,15 +1423,31 @@ switch ($action) {
         ], 'Appointment scheduled for ' . $dt->format('M j, Y g:i A'));
 
     // ── CANCEL SCHEDULED APPOINTMENT ─────────────────────────
-    // Free cancellation — no sitter has been assigned yet
+    // Parent can cancel a future scheduled job (before it goes In Progress)
     case 'cancel_scheduled':
         $job_id    = (int)($body['job_id']    ?? 0);
         $parent_id = (int)($body['parent_id'] ?? 0);
         if (!$job_id || !$parent_id) err('Missing job_id or parent_id');
-        $job = row("SELECT id, status FROM jobs WHERE id=? AND parent_id=?", [$job_id, $parent_id]);
+        $job = row("
+            SELECT j.id, j.status, j.sitter_id, j.scheduled_time,
+                   p.fname AS pname, p.lname AS plname,
+                   s.push_token AS sitter_token
+            FROM jobs j
+            LEFT JOIN parents p ON p.id = j.parent_id
+            LEFT JOIN sitters s ON s.id = j.sitter_id
+            WHERE j.id=? AND j.parent_id=?", [$job_id, $parent_id]);
         if (!$job) err('Appointment not found');
-        if ($job['status'] !== 'Scheduled') err('Only pending scheduled appointments can be cancelled here');
+        if (!in_array($job['status'], ['Scheduled','Sitter hired'])) err('This appointment cannot be cancelled at this stage');
         run("UPDATE jobs SET status='Cancelled' WHERE id=?", [$job_id]);
+        // Notify the sitter if one was assigned
+        if (!empty($job['sitter_token'])) {
+            $dt = $job['scheduled_time'] ? date('D, M j \a\t g:i A', strtotime($job['scheduled_time'])) : 'your upcoming appointment';
+            $pName = trim(($job['pname'] ?? '') . ' ' . ($job['plname'] ?? '')) ?: 'The parent';
+            sendExpoPush($job['sitter_token'],
+                '❌ Appointment Cancelled',
+                "$pName has cancelled the scheduled job for $dt.",
+                ['type' => 'scheduled_cancelled', 'job_id' => $job_id]);
+        }
         ok([], 'Scheduled appointment cancelled');
 
     // ── UPDATE SITTER PROFILE ─────────────────────────────────
@@ -2137,6 +2210,388 @@ switch ($action) {
         // Mark code as used
         run("UPDATE password_resets SET used=1 WHERE id=?", [$reset['id']]);
         ok([], 'Password reset successfully. You can now log in with your new password.');
+
+    // ── ADMIN: STATS DASHBOARD ────────────────────────────────────
+    case 'admin_stats':
+        $ak = $body['admin_key'] ?? ($_GET['admin_key'] ?? '');
+        if ($ak !== 'S4M_Admin_2026!') err('Unauthorized');
+
+        $totalJobs     = (int)(row("SELECT COUNT(*) AS c FROM jobs")['c'] ?? 0);
+        $activeJobs    = (int)(row("SELECT COUNT(*) AS c FROM jobs WHERE status IN ('Open','Sitter hired','Sitter offered','Sitter arrived','In progress')")['c'] ?? 0);
+        $todayJobs     = (int)(row("SELECT COUNT(*) AS c FROM jobs WHERE DATE(post_time)=CURDATE()")['c'] ?? 0);
+        $completedAll  = (int)(row("SELECT COUNT(*) AS c FROM jobs WHERE status='Complete'")['c'] ?? 0);
+        $cancelledAll  = (int)(row("SELECT COUNT(*) AS c FROM jobs WHERE status IN ('Cancelled','Closed')")['c'] ?? 0);
+        $onlineSitters = (int)(row("SELECT COUNT(*) AS c FROM `user` WHERE user_type='sitter' AND online=1")['c'] ?? 0);
+        $totalParents  = (int)(row("SELECT COUNT(*) AS c FROM parents")['c'] ?? 0);
+        $totalSitters  = (int)(row("SELECT COUNT(*) AS c FROM sitters")['c'] ?? 0);
+        // payout_requests is created lazily — guard in case table doesn't exist yet
+        try {
+            $pendingPayouts = (int)(row("SELECT COUNT(*) AS c FROM payout_requests WHERE status='pending'")['c'] ?? 0);
+        } catch (Exception $e) { $pendingPayouts = 0; }
+
+        ok([
+            'total_jobs'      => (int)$totalJobs,
+            'active_jobs'     => (int)$activeJobs,
+            'today_jobs'      => (int)$todayJobs,
+            'completed_jobs'  => (int)$completedAll,
+            'cancelled_jobs'  => (int)$cancelledAll,
+            'online_sitters'  => (int)$onlineSitters,
+            'total_parents'   => (int)$totalParents,
+            'total_sitters'   => (int)$totalSitters,
+            'pending_payouts' => (int)$pendingPayouts,
+        ]);
+
+    // ── ADMIN: LIST JOBS (paginated, filterable) ───────────────────
+    case 'admin_list_jobs':
+        $ak = $body['admin_key'] ?? ($_GET['admin_key'] ?? '');
+        if ($ak !== 'S4M_Admin_2026!') err('Unauthorized');
+
+        $filterStatus = $body['status']    ?? ($_GET['status']    ?? '');
+        $searchId     = (int)($body['job_id'] ?? ($_GET['job_id'] ?? 0));
+        $page         = max(1, (int)($body['page'] ?? ($_GET['page'] ?? 1)));
+        $perPage      = 25;
+        $offset       = ($page - 1) * $perPage;
+
+        $where  = [];
+        $params = [];
+
+        if ($searchId > 0) {
+            $where[]  = 'j.id = ?';
+            $params[] = $searchId;
+        }
+        if ($filterStatus && $filterStatus !== 'all') {
+            $where[]  = 'j.status = ?';
+            $params[] = $filterStatus;
+        }
+
+        $whereClause = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
+
+        $totalCount = row("SELECT COUNT(*) AS c FROM jobs j $whereClause", $params)['c'];
+
+        $jobs = rows("
+            SELECT j.id, j.status, j.parent_id, j.sitter_id,
+                   j.kids, j.address, j.charge_amt, j.post_time,
+                   IFNULL(j.children_ages,'[]')    AS children_ages,
+                   IFNULL(j.scheduled_time, NULL)  AS scheduled_time,
+                   IFNULL(j.notes,'')              AS notes,
+                   p.fname AS parent_fname, p.lname AS parent_lname,
+                   IFNULL(p.email,'')  AS parent_email,
+                   s.fname AS sitter_fname, s.lname AS sitter_lname,
+                   IFNULL(s.email,'')  AS sitter_email
+            FROM jobs j
+            LEFT JOIN parents  p ON p.id = j.parent_id
+            LEFT JOIN sitters  s ON s.id = j.sitter_id
+            $whereClause
+            ORDER BY j.id DESC
+            LIMIT $perPage OFFSET $offset
+        ", $params);
+
+        ok([
+            'jobs'        => $jobs,
+            'total'       => (int)$totalCount,
+            'page'        => $page,
+            'per_page'    => $perPage,
+            'total_pages' => ceil($totalCount / $perPage),
+        ]);
+
+    // ── ADMIN: CANCEL ANY JOB ────────────────────────────────────
+    case 'admin_cancel_job':
+        $ak = $body['admin_key'] ?? '';
+        if ($ak !== 'S4M_Admin_2026!') err('Unauthorized');
+
+        $job_id = (int)($body['job_id'] ?? 0);
+        $reason = trim($body['reason'] ?? 'Cancelled by admin');
+        if (!$job_id) err('Missing job_id');
+
+        $job = row("SELECT j.*, s.fname AS sitter_fname, s.push_token AS sitter_token,
+                           p.fname AS parent_fname, p.push_token AS parent_token
+                    FROM jobs j
+                    LEFT JOIN sitters s ON s.id = j.sitter_id
+                    LEFT JOIN parents p ON p.id = j.parent_id
+                    WHERE j.id=?", [$job_id]);
+        if (!$job) err('Job #' . $job_id . ' not found');
+        if ($job['status'] === 'Complete') err('Job #' . $job_id . ' is already complete — cannot cancel');
+
+        run("UPDATE jobs SET status='Cancelled' WHERE id=?", [$job_id]);
+        // Mark any open routing entries as declined
+        run("UPDATE job_routing SET status='declined' WHERE job_id=? AND status IN ('pending','notified')", [$job_id]);
+
+        // Notify parent
+        if (!empty($job['parent_token'])) {
+            sendExpoPush($job['parent_token'], '❌ Booking Cancelled',
+                "Job #$job_id has been cancelled by admin. $reason",
+                ['type'=>'job_cancelled','job_id'=>$job_id]);
+        }
+        // Notify sitter if assigned
+        if (!empty($job['sitter_id']) && !empty($job['sitter_token'])) {
+            sendExpoPush($job['sitter_token'], '❌ Job Cancelled',
+                "Job #$job_id has been cancelled by admin. $reason",
+                ['type'=>'job_cancelled','job_id'=>$job_id]);
+        }
+
+        ok(['job_id' => $job_id, 'status' => 'Cancelled'], "Job #$job_id cancelled.");
+
+    // ── ADMIN: UPDATE JOB FIELDS ──────────────────────────────────
+    case 'admin_update_job':
+        $ak = $body['admin_key'] ?? '';
+        if ($ak !== 'S4M_Admin_2026!') err('Unauthorized');
+
+        $job_id = (int)($body['job_id'] ?? 0);
+        if (!$job_id) err('Missing job_id');
+
+        $job = row("SELECT id, status FROM jobs WHERE id=?", [$job_id]);
+        if (!$job) err('Job #' . $job_id . ' not found');
+
+        // Build SET clause from allowed updatable fields
+        $allowed = ['status', 'notes', 'kids', 'charge_amt', 'scheduled_time', 'sitter_id'];
+        $setClauses = [];
+        $setParams  = [];
+
+        foreach ($allowed as $field) {
+            if (array_key_exists($field, $body) && $body[$field] !== null && $body[$field] !== '') {
+                $setClauses[] = "`$field` = ?";
+                $setParams[]  = $body[$field];
+            }
+        }
+
+        if (empty($setClauses)) err('No valid fields to update');
+
+        $setParams[] = $job_id;
+        run("UPDATE jobs SET " . implode(', ', $setClauses) . " WHERE id=?", $setParams);
+
+        $updated = row("SELECT j.*, p.fname AS parent_fname, p.lname AS parent_lname,
+                               s.fname AS sitter_fname, s.lname AS sitter_lname
+                        FROM jobs j
+                        LEFT JOIN parents p ON p.id=j.parent_id
+                        LEFT JOIN sitters s ON s.id=j.sitter_id
+                        WHERE j.id=?", [$job_id]);
+        ok(['job' => $updated], "Job #$job_id updated.");
+
+    // ── ADMIN: CLOSE ALL ACTIVE JOBS ──────────────────────────────
+    case 'admin_close_all_active':
+        $ak = $body['admin_key'] ?? '';
+        if ($ak !== 'S4M_Admin_2026!') err('Unauthorized');
+
+        $activeStatuses = ['Open','Sitter hired','Sitter offered','Sitter arrived','In progress'];
+        $placeholders   = implode(',', array_fill(0, count($activeStatuses), '?'));
+
+        // Get affected jobs before closing (for notifications)
+        $affected = rows(
+            "SELECT j.id, j.sitter_id, j.parent_id,
+                    p.push_token AS parent_token, s.push_token AS sitter_token
+             FROM jobs j
+             LEFT JOIN parents p ON p.id=j.parent_id
+             LEFT JOIN sitters  s ON s.id=j.sitter_id
+             WHERE j.status IN ($placeholders)",
+            $activeStatuses
+        );
+
+        if (empty($affected)) {
+            ok(['closed' => 0], 'No active jobs to close.');
+        }
+
+        // Close all
+        run("UPDATE jobs SET status='Cancelled' WHERE status IN ($placeholders)", $activeStatuses);
+        // Close all open routing
+        run("UPDATE job_routing SET status='declined' WHERE status IN ('pending','notified')", []);
+
+        $count = count($affected);
+
+        // Send push to each parent and sitter
+        foreach ($affected as $aj) {
+            if (!empty($aj['parent_token'])) {
+                sendExpoPush($aj['parent_token'], '❌ Booking Cancelled',
+                    'Your booking has been cancelled by the platform. Please place a new request.',
+                    ['type'=>'job_cancelled','job_id'=>$aj['id']]);
+            }
+            if (!empty($aj['sitter_id']) && !empty($aj['sitter_token'])) {
+                sendExpoPush($aj['sitter_token'], '❌ Job Cancelled',
+                    'A job you were assigned to has been cancelled by the platform.',
+                    ['type'=>'job_cancelled','job_id'=>$aj['id']]);
+            }
+        }
+
+        ok(['closed' => $count], "$count active job(s) closed successfully.");
+
+    // ── ADMIN: LIST SITTERS ───────────────────────────────────────
+    case 'admin_list_sitters':
+        $ak = $body['admin_key'] ?? ($_GET['admin_key'] ?? '');
+        if ($ak !== 'S4M_Admin_2026!') err('Unauthorized');
+
+        $searchQ  = trim($body['search'] ?? ($_GET['search'] ?? ''));
+        $page     = max(1, (int)($body['page'] ?? ($_GET['page'] ?? 1)));
+        $perPage  = 25;
+        $offset   = ($page - 1) * $perPage;
+
+        $where  = [];
+        $params = [];
+        if ($searchQ) {
+            $like = '%' . $searchQ . '%';
+            $where[]  = '(s.fname LIKE ? OR s.lname LIKE ? OR s.email LIKE ? OR s.phone LIKE ?)';
+            $params   = array_merge($params, [$like, $like, $like, $like]);
+        }
+        $whereClause = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
+
+        $totalCount = row("SELECT COUNT(*) AS c FROM sitters s $whereClause", $params)['c'];
+
+        $sitters = rows("
+            SELECT s.id, s.fname, s.lname,
+                   IFNULL(s.email,'')        AS email,
+                   IFNULL(s.phone,'')        AS phone,
+                   IFNULL(s.city,'')         AS city,
+                   IFNULL(s.state,'')        AS state,
+                   IFNULL(s.minrate,0)       AS minrate,
+                   IFNULL(s.checkr_status,'pending') AS checkr_status,
+                   IFNULL(s.is_active,1)     AS is_active,
+                   IFNULL(s.avg_rating,0)    AS avg_rating,
+                   IFNULL(s.review_count,0)  AS review_count,
+                   IFNULL(s.experience_years,0) AS experience_years,
+                   IFNULL(s.admin_notes,'')  AS admin_notes,
+                   u.online,
+                   (SELECT COUNT(*) FROM jobs WHERE sitter_id=s.id AND status='Complete') AS completed_jobs
+            FROM sitters s
+            LEFT JOIN `user` u ON u.u_id = s.id AND u.user_type='sitter'
+            $whereClause
+            ORDER BY s.id DESC
+            LIMIT $perPage OFFSET $offset
+        ", $params);
+
+        ok([
+            'sitters'     => $sitters,
+            'total'       => (int)$totalCount,
+            'page'        => $page,
+            'per_page'    => $perPage,
+            'total_pages' => (int)ceil($totalCount / $perPage),
+        ]);
+
+    // ── ADMIN: UPDATE SITTER ──────────────────────────────────────
+    case 'admin_update_sitter':
+        $ak = $body['admin_key'] ?? '';
+        if ($ak !== 'S4M_Admin_2026!') err('Unauthorized');
+
+        $sitter_id = (int)($body['sitter_id'] ?? 0);
+        if (!$sitter_id) err('Missing sitter_id');
+
+        $sitter = row("SELECT id, fname, lname FROM sitters WHERE id=?", [$sitter_id]);
+        if (!$sitter) err('Sitter not found');
+
+        $setClauses = [];
+        $setParams  = [];
+
+        // Approve / update background check status
+        if (isset($body['checkr_status']) && $body['checkr_status'] !== '') {
+            $allowed = ['pending','clear','consider','suspended'];
+            if (!in_array($body['checkr_status'], $allowed)) err('Invalid checkr_status');
+            $setClauses[] = 'checkr_status = ?';
+            $setParams[]  = $body['checkr_status'];
+        }
+        // Activate or suspend sitter
+        if (isset($body['is_active'])) {
+            $isActive     = (int)(bool)$body['is_active'];
+            $setClauses[] = 'is_active = ?';
+            $setParams[]  = $isActive;
+        }
+        // Admin notes
+        if (array_key_exists('admin_notes', $body)) {
+            $setClauses[] = 'admin_notes = ?';
+            $setParams[]  = trim($body['admin_notes'] ?? '');
+        }
+
+        if (empty($setClauses)) err('No valid fields to update');
+
+        $setParams[] = $sitter_id;
+        run("UPDATE sitters SET " . implode(', ', $setClauses) . " WHERE id=?", $setParams);
+
+        // If suspending, force offline immediately
+        if (isset($body['is_active']) && (int)(bool)$body['is_active'] === 0) {
+            run("UPDATE `user` SET online=0 WHERE u_id=? AND user_type='sitter'", [$sitter_id]);
+        }
+
+        $name = trim($sitter['fname'] . ' ' . $sitter['lname']);
+        ok(['sitter_id' => $sitter_id], "Sitter $name updated.");
+
+    // ── ADMIN: LIST PARENTS ───────────────────────────────────────
+    case 'admin_list_parents':
+        $ak = $body['admin_key'] ?? ($_GET['admin_key'] ?? '');
+        if ($ak !== 'S4M_Admin_2026!') err('Unauthorized');
+
+        $searchQ  = trim($body['search'] ?? ($_GET['search'] ?? ''));
+        $page     = max(1, (int)($body['page'] ?? ($_GET['page'] ?? 1)));
+        $perPage  = 25;
+        $offset   = ($page - 1) * $perPage;
+
+        $where  = [];
+        $params = [];
+        if ($searchQ) {
+            $like = '%' . $searchQ . '%';
+            $where[]  = '(p.fname LIKE ? OR p.lname LIKE ? OR p.email LIKE ? OR p.phone LIKE ?)';
+            $params   = array_merge($params, [$like, $like, $like, $like]);
+        }
+        $whereClause = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
+
+        $totalCount = row("SELECT COUNT(*) AS c FROM parents p $whereClause", $params)['c'];
+
+        $parents = rows("
+            SELECT p.id, p.fname, p.lname,
+                   IFNULL(p.email,'')       AS email,
+                   IFNULL(p.phone,'')       AS phone,
+                   IFNULL(p.city,'')        AS city,
+                   IFNULL(p.state,'')       AS state,
+                   IFNULL(p.cancel_count,0) AS cancel_count,
+                   IFNULL(p.is_active,1)    AS is_active,
+                   IFNULL(p.admin_notes,'') AS admin_notes,
+                   (SELECT COUNT(*) FROM jobs WHERE parent_id=p.id) AS total_jobs,
+                   (SELECT COUNT(*) FROM jobs WHERE parent_id=p.id AND status='Complete') AS completed_jobs,
+                   (SELECT COUNT(*) FROM jobs WHERE parent_id=p.id AND status IN ('Cancelled','Closed')) AS cancelled_jobs
+            FROM parents p
+            $whereClause
+            ORDER BY p.id DESC
+            LIMIT $perPage OFFSET $offset
+        ", $params);
+
+        ok([
+            'parents'     => $parents,
+            'total'       => (int)$totalCount,
+            'page'        => $page,
+            'per_page'    => $perPage,
+            'total_pages' => (int)ceil($totalCount / $perPage),
+        ]);
+
+    // ── ADMIN: UPDATE PARENT ──────────────────────────────────────
+    case 'admin_update_parent':
+        $ak = $body['admin_key'] ?? '';
+        if ($ak !== 'S4M_Admin_2026!') err('Unauthorized');
+
+        $parent_id = (int)($body['parent_id'] ?? 0);
+        if (!$parent_id) err('Missing parent_id');
+
+        $parent = row("SELECT id, fname, lname FROM parents WHERE id=?", [$parent_id]);
+        if (!$parent) err('Parent not found');
+
+        $setClauses = [];
+        $setParams  = [];
+
+        if (isset($body['is_active'])) {
+            $setClauses[] = 'is_active = ?';
+            $setParams[]  = (int)(bool)$body['is_active'];
+        }
+        if (array_key_exists('admin_notes', $body)) {
+            $setClauses[] = 'admin_notes = ?';
+            $setParams[]  = trim($body['admin_notes'] ?? '');
+        }
+        // Allow admin to reset cancel count
+        if (isset($body['cancel_count'])) {
+            $setClauses[] = 'cancel_count = ?';
+            $setParams[]  = max(0, (int)$body['cancel_count']);
+        }
+
+        if (empty($setClauses)) err('No valid fields to update');
+
+        $setParams[] = $parent_id;
+        run("UPDATE parents SET " . implode(', ', $setClauses) . " WHERE id=?", $setParams);
+
+        $name = trim($parent['fname'] . ' ' . $parent['lname']);
+        ok(['parent_id' => $parent_id], "Parent $name updated.");
 
     default:
         err('Unknown action: ' . $action);
