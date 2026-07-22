@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sitters4Me · Save Payment Method</title>
+  <script src="https://js.stripe.com/v3/"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #C93488 0%, #9B5BAB 40%, #5A7EC4 70%, #02A4E2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .card {
+      background: #FFFFFF;
+      border-radius: 24px;
+      padding: 32px 24px;
+      width: 100%;
+      max-width: 480px;
+      margin-top: 20px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.18);
+    }
+
+    .logo {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+    .logo-text {
+      font-size: 22px;
+      font-weight: 900;
+      background: linear-gradient(135deg, #C93488, #02A4E2);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      letter-spacing: -0.5px;
+    }
+    .logo-sub {
+      font-size: 13px;
+      color: #9B9FAE;
+      margin-top: 4px;
+    }
+
+    h2 {
+      font-size: 20px;
+      font-weight: 800;
+      color: #0F1117;
+      margin-bottom: 6px;
+    }
+    .subtitle {
+      font-size: 14px;
+      color: #5A5F72;
+      line-height: 20px;
+      margin-bottom: 24px;
+    }
+
+    .security-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: #F0FDF4;
+      border: 1px solid rgba(26,127,110,0.2);
+      border-radius: 10px;
+      padding: 10px 14px;
+      margin-bottom: 20px;
+    }
+    .security-badge span {
+      font-size: 13px;
+      color: #1A7F6E;
+      font-weight: 600;
+    }
+
+    #payment-element {
+      margin-bottom: 20px;
+    }
+
+    .submit-btn {
+      width: 100%;
+      padding: 16px;
+      border: none;
+      border-radius: 14px;
+      background: linear-gradient(135deg, #C93488, #9B5BAB);
+      color: #FFFFFF;
+      font-size: 17px;
+      font-weight: 800;
+      cursor: pointer;
+      letter-spacing: -0.2px;
+      transition: opacity 0.2s;
+    }
+    .submit-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .submit-btn:hover:not(:disabled) {
+      opacity: 0.9;
+    }
+
+    #messages {
+      margin-top: 16px;
+      padding: 12px 16px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      display: none;
+    }
+    #messages.error {
+      background: #FDE9E7;
+      color: #BF3B2E;
+      display: block;
+    }
+    #messages.success {
+      background: #D4EDE9;
+      color: #1A7F6E;
+      display: block;
+    }
+
+    .success-screen {
+      display: none;
+      text-align: center;
+      padding: 20px 0;
+    }
+    .success-screen.visible { display: block; }
+
+    .success-icon {
+      font-size: 64px;
+      margin-bottom: 16px;
+    }
+    .success-title {
+      font-size: 24px;
+      font-weight: 900;
+      color: #1A7F6E;
+      margin-bottom: 8px;
+    }
+    .success-text {
+      font-size: 14px;
+      color: #5A5F72;
+      line-height: 22px;
+      margin-bottom: 24px;
+    }
+    .close-btn {
+      display: inline-block;
+      padding: 14px 32px;
+      background: #1A7F6E;
+      color: #FFFFFF;
+      border-radius: 14px;
+      font-size: 16px;
+      font-weight: 800;
+      border: none;
+      cursor: pointer;
+      text-decoration: none;
+    }
+
+    .spinner {
+      display: inline-block;
+      width: 18px;
+      height: 18px;
+      border: 2.5px solid rgba(255,255,255,0.4);
+      border-top-color: #FFFFFF;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      vertical-align: middle;
+      margin-right: 8px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .powered-by {
+      text-align: center;
+      margin-top: 20px;
+      font-size: 12px;
+      color: #9B9FAE;
+    }
+    .powered-by a { color: #9B9FAE; text-decoration: none; }
+
+    .loading-screen {
+      text-align: center;
+      padding: 40px 0;
+    }
+    .loading-spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid #EEECE7;
+      border-top-color: #C93488;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 16px;
+    }
+    .loading-text {
+      font-size: 14px;
+      color: #9B9FAE;
+    }
+
+    .error-screen {
+      display: none;
+      text-align: center;
+      padding: 20px 0;
+    }
+    .error-screen.visible { display: block; }
+    .error-icon { font-size: 48px; margin-bottom: 12px; }
+    .error-title { font-size: 18px; font-weight: 800; color: #BF3B2E; margin-bottom: 8px; }
+    .error-text { font-size: 13px; color: #5A5F72; line-height: 20px; }
+
+    /* ── TEST MODE styles ───────────────────────────────────────── */
+    .test-banner {
+      background: #FFF3CD;
+      border: 1px solid #FBBF24;
+      border-radius: 10px;
+      padding: 10px 14px;
+      margin-bottom: 18px;
+      font-size: 12px;
+      color: #92400E;
+      font-weight: 600;
+      text-align: center;
+    }
+    .dummy-field {
+      margin-bottom: 14px;
+    }
+    .dummy-field label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: #5A5F72;
+      margin-bottom: 6px;
+    }
+    .dummy-field input, .dummy-field select {
+      width: 100%;
+      padding: 12px 14px;
+      border: 1.5px solid #D1D5DB;
+      border-radius: 10px;
+      font-size: 15px;
+      background: #F5F4F0;
+      color: #0F1117;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .dummy-field input:focus, .dummy-field select:focus {
+      border-color: #C93488;
+    }
+    .dummy-row {
+      display: flex;
+      gap: 12px;
+    }
+    .dummy-row .dummy-field {
+      flex: 1;
+    }
+  </style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">
+    <div class="logo-text">Sitters4Me</div>
+    <div class="logo-sub">Secure payment setup</div>
+  </div>
+
+  <!-- Loading -->
+  <div class="loading-screen" id="loading-screen">
+    <div class="loading-spinner"></div>
+    <div class="loading-text">Preparing secure card form...</div>
+  </div>
+
+  <!-- Error screen (bad params) -->
+  <div class="error-screen" id="error-screen">
+    <div class="error-icon">⚠️</div>
+    <div class="error-title">Invalid Session</div>
+    <div class="error-text">
+      This link has expired or is invalid.<br />
+      Please go back to the app and try again.
+    </div>
+  </div>
+
+  <!-- Card form (live Stripe mode) -->
+  <div id="form-screen" style="display:none">
+    <h2>Add Payment Method</h2>
+    <p class="subtitle">
+      Add a card so sitters can be paid automatically when a job is complete.
+      Your card is stored securely by Stripe — we never see your card number.
+    </p>
+
+    <div class="security-badge">
+      <span>🔒</span>
+      <span>Secured by Stripe · 256-bit SSL encryption</span>
+    </div>
+
+    <form id="payment-form">
+      <div id="payment-element"></div>
+      <button type="submit" id="submit-btn" class="submit-btn">
+        Save Card Securely
+      </button>
+      <div id="messages"></div>
+    </form>
+  </div>
+
+  <!-- Test-mode dummy card form -->
+  <div id="test-form-screen" style="display:none">
+    <h2>Add Payment Method</h2>
+    <p class="subtitle">
+      Add a card so sitters can be paid automatically when a job is complete.
+    </p>
+
+    <div class="test-banner">
+      🧪 TEST MODE — enter any card number to simulate a saved card
+    </div>
+
+    <form id="test-payment-form">
+      <div class="dummy-field">
+        <label>Card Number</label>
+        <input id="test-card-number" type="text" inputmode="numeric"
+               placeholder="4242 4242 4242 4242" maxlength="19"
+               value="4242 4242 4242 4242" autocomplete="off" />
+      </div>
+      <div class="dummy-row">
+        <div class="dummy-field">
+          <label>Expiry</label>
+          <input id="test-expiry" type="text" inputmode="numeric"
+                 placeholder="MM / YY" maxlength="7"
+                 value="12 / 99" autocomplete="off" />
+        </div>
+        <div class="dummy-field">
+          <label>CVC</label>
+          <input id="test-cvc" type="text" inputmode="numeric"
+                 placeholder="123" maxlength="4"
+                 value="123" autocomplete="off" />
+        </div>
+      </div>
+      <div class="dummy-field">
+        <label>Name on Card</label>
+        <input id="test-name" type="text" placeholder="Test User" value="Test User" />
+      </div>
+
+      <button type="submit" id="test-submit-btn" class="submit-btn">
+        💳 Save Test Card
+      </button>
+      <div id="test-messages" style="margin-top:12px;font-size:13px;color:#BF3B2E;display:none;"></div>
+    </form>
+  </div>
+
+  <!-- Success screen -->
+  <div class="success-screen" id="success-screen">
+    <div class="success-icon">🎉</div>
+    <div class="success-title">Card Saved!</div>
+    <div class="success-text">
+      Your payment method has been saved securely.<br />
+      Sitters will be automatically paid when a job is complete — no action needed from you.
+    </div>
+    <button class="close-btn" onclick="closeWindow()">
+      ✓ Done — Return to App
+    </button>
+  </div>
+
+  <div class="powered-by">
+    <a href="https://stripe.com" target="_blank">Payments secured by Stripe</a>
+  </div>
+</div>
+
+<script>
+  // ── Read URL params ────────────────────────────────────────────
+  const params         = new URLSearchParams(window.location.search);
+  const clientSecret   = params.get('cs');
+  const publishableKey = params.get('pk');
+  const parentId       = params.get('pid');
+  const isTestMode     = !clientSecret || clientSecret.startsWith('test_');
+
+  const loadingEl   = document.getElementById('loading-screen');
+  const errorEl     = document.getElementById('error-screen');
+  const formEl      = document.getElementById('form-screen');
+  const testFormEl  = document.getElementById('test-form-screen');
+  const successEl   = document.getElementById('success-screen');
+  const msgEl       = document.getElementById('messages');
+  const submitBtn   = document.getElementById('submit-btn');
+
+  function showError(msg) {
+    msgEl.textContent = msg;
+    msgEl.className = 'error';
+    submitBtn.disabled = false;
+    submitBtn.innerHTML = 'Save Card Securely';
+  }
+
+  function showSuccess() {
+    formEl.style.display    = 'none';
+    testFormEl.style.display = 'none';
+    successEl.classList.add('visible');
+  }
+
+  function closeWindow() {
+    if (window.ReactNativeWebView) {
+      window.ReactNativeWebView.postMessage('card_saved');
+    }
+    try { window.close(); } catch(e) {}
+    window.location.href = 'sitters4me://payment-complete';
+  }
+
+  // ── Missing params → error ─────────────────────────────────────
+  if (!clientSecret) {
+    loadingEl.style.display = 'none';
+    errorEl.classList.add('visible');
+
+  // ── TEST MODE: show dummy form, no Stripe.js needed ────────────
+  } else if (isTestMode) {
+    loadingEl.style.display  = 'none';
+    testFormEl.style.display = 'block';
+
+    // Format card number with spaces as user types
+    const cardInput = document.getElementById('test-card-number');
+    cardInput.addEventListener('input', () => {
+      let v = cardInput.value.replace(/\D/g, '').slice(0, 16);
+      cardInput.value = v.replace(/(.{4})/g, '$1 ').trim();
+    });
+
+    // Format expiry MM / YY
+    const expiryInput = document.getElementById('test-expiry');
+    expiryInput.addEventListener('input', () => {
+      let v = expiryInput.value.replace(/\D/g, '').slice(0, 4);
+      if (v.length >= 3) v = v.slice(0,2) + ' / ' + v.slice(2);
+      expiryInput.value = v;
+    });
+
+    document.getElementById('test-payment-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('test-submit-btn');
+      const errDiv = document.getElementById('test-messages');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>Saving...';
+      errDiv.style.display = 'none';
+
+      // Basic validation
+      const cardNum = cardInput.value.replace(/\s/g, '');
+      if (cardNum.length < 13) {
+        errDiv.textContent = 'Please enter a valid card number.';
+        errDiv.style.display = 'block';
+        btn.disabled = false;
+        btn.innerHTML = '💳 Save Test Card';
+        return;
+      }
+
+      // Simulate a short save delay then show success
+      await new Promise(r => setTimeout(r, 800));
+      showSuccess();
+    });
+
+  // ── LIVE MODE: real Stripe ─────────────────────────────────────
+  } else {
+    const stripe = Stripe(publishableKey);
+
+    const appearance = {
+      theme: 'stripe',
+      variables: {
+        colorPrimary:    '#C93488',
+        colorBackground: '#F5F4F0',
+        colorText:       '#0F1117',
+        colorDanger:     '#BF3B2E',
+        fontFamily:      '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+        spacingUnit:     '4px',
+        borderRadius:    '10px',
+      },
+    };
+
+    const elements      = stripe.elements({ clientSecret, appearance });
+    const paymentElement = elements.create('payment', {
+      layout: { type: 'tabs', defaultCollapsed: false },
+    });
+
+    paymentElement.on('ready', () => {
+      loadingEl.style.display = 'none';
+      formEl.style.display    = 'block';
+    });
+
+    paymentElement.mount('#payment-element');
+
+    document.getElementById('payment-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<span class="spinner"></span>Saving...';
+      msgEl.className      = '';
+      msgEl.style.display  = 'none';
+
+      const returnUrl = `${window.location.origin}/payment-complete.html?pid=${parentId || ''}`;
+
+      const { error } = await stripe.confirmSetup({
+        elements,
+        confirmParams: { return_url: returnUrl },
+        redirect: 'if_required',
+      });
+
+      if (error) {
+        showError(error.message || 'Could not save card. Please try again.');
+      } else {
+        showSuccess();
+      }
+    });
+  }
+</script>
+</body>
+</html>
