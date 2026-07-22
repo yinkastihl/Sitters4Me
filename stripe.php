@@ -77,7 +77,7 @@ function ok($data = [], $msg = 'OK') {
     echo json_encode(['success' => true, 'message' => $msg, 'data' => $data]);
     exit;
 }
-function err($msg, $code = 400) {
+function err($msg, $code = 200) {
     http_response_code($code);
     echo json_encode(['success' => false, 'error' => $msg]);
     exit;

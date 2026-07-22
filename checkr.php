@@ -50,7 +50,7 @@ header('Access-Control-Allow-Headers: Content-Type, Authorization');
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { exit(0); }
 
 function ok($data=[], $msg='OK')   { echo json_encode(['success'=>true, 'message'=>$msg, 'data'=>$data]); exit; }
-function err($msg, $code=400)     { http_response_code($code); echo json_encode(['success'=>false, 'error'=>$msg]); exit; }
+function err($msg, $code=200)     { http_response_code($code); echo json_encode(['success'=>false, 'error'=>$msg]); exit; }
 
 // ── Checkr API caller ─────────────────────────────────────────────────────────
 function checkrRequest(string $method, string $endpoint, array $data = []): array {
@@ -101,7 +101,7 @@ switch ($action) {
         if (!$sitter_id) err('Missing sitter_id');
 
         $sitter = row("SELECT * FROM sitters WHERE id=?", [$sitter_id]);
-        if (!$sitter) err('Sitter not found', 404);
+        if (!$sitter) err('Sitter not found');
 
         // Don't re-initiate if already in progress
         if (!empty($sitter['checkr_candidate_id'])) {
@@ -179,7 +179,7 @@ switch ($action) {
                    checkr_report_id, checkr_status, checkr_invitation_url,
                    status AS account_status
             FROM sitters WHERE id=?", [$sitter_id]);
-        if (!$sitter) err('Sitter not found', 404);
+        if (!$sitter) err('Sitter not found');
 
         // If we have a report ID, fetch live status from Checkr
         if (!empty($sitter['checkr_report_id'])) {

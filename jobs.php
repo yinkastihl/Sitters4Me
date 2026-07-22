@@ -34,7 +34,7 @@ function ok($data=[],$msg='OK'){
     echo json_encode(['success'=>true,'message'=>$msg,'data'=>$data]);
     exit;
 }
-function err($msg,$code=400){
+function err($msg,$code=200){
     http_response_code($code);
     echo json_encode(['success'=>false,'error'=>$msg]);
     exit;
@@ -403,7 +403,7 @@ switch ($action) {
             [$parent_id]
         );
         if ($existingJob) {
-            err('You already have an active booking (Job #' . $existingJob['id'] . ' — ' . $existingJob['status'] . '). Please complete or cancel it before requesting a new sitter.', 400);
+            err('You already have an active booking (Job #' . $existingJob['id'] . ' — ' . $existingJob['status'] . '). Please complete or cancel it before requesting a new sitter.');
         }
 
         // Find online sitters in radius
@@ -1681,7 +1681,7 @@ switch ($action) {
         // Cannot cancel once job is in progress or complete
         $blockStatuses = ['In progress', 'Complete'];
         if (in_array($job['status'], $blockStatuses)) {
-            err('Cannot cancel a job that has already started or completed.', 400);
+            err('Cannot cancel a job that has already started or completed.');
         }
 
         $cancelCount = (int)($job['cancel_count'] ?? 0);
@@ -1831,7 +1831,7 @@ switch ($action) {
             FROM sitters s
             LEFT JOIN `user` u ON u.u_id = s.id AND u.user_type='sitter'
             WHERE s.id=?", [$sitter_id]);
-        if (!$sitter) err('Sitter not found', 404);
+        if (!$sitter) err('Sitter not found');
         $reviews = rows("
             SELECT r.id, r.rating, r.review_text, r.created_at,
                    p.fname AS parent_fname, p.lname AS parent_lname
