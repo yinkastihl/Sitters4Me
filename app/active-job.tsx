@@ -107,6 +107,15 @@ export default function ActiveJob() {
     }
   }, [status]);
 
+  // Map server job status → internal phase state
+  const resolvePhase = (serverStatus: string): 'travelling' | 'arrived' | 'started' | 'done' => {
+    const st = (serverStatus || '').toLowerCase();
+    if (st === 'in progress')    return 'started';
+    if (st === 'sitter arrived') return 'arrived';
+    if (st === 'complete')       return 'done';
+    return 'travelling'; // 'Sitter hired', 'Sitter offered', anything else
+  };
+
   const loadActiveJob = async () => {
     try {
       // Get the job that this sitter just accepted
@@ -116,6 +125,18 @@ export default function ActiveJob() {
       if (res.data?.success && res.data?.data) {
         const jobData = res.data.data;
         setJob(jobData);
+
+        // ── Restore the correct phase from server status ──────
+        const phase = resolvePhase(jobData.status);
+        setStatus(phase);
+
+        // ── Restore elapsed timer if job was already started ──
+        if (phase === 'started') {
+          if (jobData.elapsed_seconds > 0) setElapsed(jobData.elapsed_seconds);
+          // Kick off live timer from restored offset
+          timerRef.current = setInterval(() => setElapsed(s => s + 1), 1000);
+        }
+
         const jid = jobData.id || jobData.job_id;
         if (jid) {
           jobIdRef.current = Number(jid);

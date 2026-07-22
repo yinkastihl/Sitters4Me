@@ -1031,6 +1031,14 @@ switch ($action) {
         $job = row("
             SELECT j.id, j.kids, j.children_ages, j.address, j.city, j.state,
                    j.charge_amt AS rate, j.status,
+                   j.start_time, j.accept_time,
+                   CASE
+                       WHEN j.start_time IS NOT NULL AND j.stop_time IS NULL
+                           THEN GREATEST(0, TIMESTAMPDIFF(SECOND, j.start_time, NOW()))
+                       WHEN j.start_time IS NOT NULL AND j.stop_time IS NOT NULL
+                           THEN GREATEST(0, TIMESTAMPDIFF(SECOND, j.start_time, j.stop_time))
+                       ELSE 0
+                   END AS elapsed_seconds,
                    s.minrate AS sitter_minrate,
                    COALESCE(s.additional_child_rate, 0) AS additional_child_rate,
                    p.fname AS parent_fname, p.lname AS parent_lname,
@@ -1040,7 +1048,7 @@ switch ($action) {
             LEFT JOIN sitters s ON s.id = j.sitter_id
             INNER JOIN parents p ON p.id = j.parent_id
             WHERE j.sitter_id = ?
-              AND j.status IN ('Sitter hired','In progress','Sitter offered')
+              AND j.status IN ('Sitter hired','Sitter arrived','In progress','Sitter offered')
             ORDER BY j.id DESC
             LIMIT 1
         ", [$sitter_id]);
