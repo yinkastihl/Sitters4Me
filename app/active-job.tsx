@@ -247,6 +247,7 @@ export default function ActiveJob() {
     stopTimer();
     clearInterval(statusPollRef.current); // no longer need cancellation check
     setStatus('done');
+    global.activeJob = null;
     clearActiveSession();
 
     const jobId    = job?.id || job?.job_id;

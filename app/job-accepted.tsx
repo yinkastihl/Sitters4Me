@@ -302,6 +302,7 @@ export default function JobAccepted() {
     if (jid && d.status && d.status !== 'Complete') {
       saveActiveSession('parent', Number(jid), (global as any).currentUser || {});
     } else if (d.status === 'Complete') {
+      global.activeJob = null;
       clearActiveSession();
     }
 

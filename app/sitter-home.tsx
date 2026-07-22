@@ -50,12 +50,16 @@ export default function SitterHome() {
   const [upcomingJobs, setUpcomingJobs] = useState<any[]>([]);
   // Increment to force re-render after returning from profile edit screen
   const [profileVersion, setProfileVersion] = useState(0);
+  const [hasActiveJob,   setHasActiveJob]   = useState(false);
 
   // Re-read global.currentUser every time this screen gains focus
   // (picks up rate/distance changes made in profile edit screen)
+  // Also re-check whether a job is in progress so the return banner appears
   useFocusEffect(
     useCallback(() => {
       setProfileVersion(v => v + 1);
+      const aj = (global as any).activeJob;
+      setHasActiveJob(!!(aj?.job_id));
     }, [])
   );
 
@@ -450,6 +454,19 @@ export default function SitterHome() {
         </View>
       </LinearGradient>
 
+      {/* ACTIVE JOB RETURN BANNER */}
+      {hasActiveJob && (
+        <TouchableOpacity
+          style={s.activeJobBanner}
+          onPress={() => router.push('/active-job')}
+          activeOpacity={0.85}
+        >
+          <View style={s.activeJobBannerDot} />
+          <Text style={s.activeJobBannerText}>⏱ Job in progress · Tap to return</Text>
+          <Text style={s.activeJobBannerChevron}>›</Text>
+        </TouchableOpacity>
+      )}
+
       <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
 
         {/* ONLINE TOGGLE */}
@@ -667,6 +684,10 @@ const s = StyleSheet.create({
   greeting:        { fontSize: 18, fontWeight: '900', color: '#FFFFFF', letterSpacing: -0.3 },
   greetingSub:     { fontSize: 13, color: 'rgba(255,255,255,0.85)', marginTop: 2 },
   settingsBtn:     { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  activeJobBanner:        { flexDirection: 'row', alignItems: 'center', backgroundColor: '#16A34A', paddingVertical: 12, paddingHorizontal: 18, gap: 10 },
+  activeJobBannerDot:     { width: 9, height: 9, borderRadius: 5, backgroundColor: '#FFFFFF', opacity: 0.9 },
+  activeJobBannerText:    { flex: 1, fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
+  activeJobBannerChevron: { fontSize: 22, color: 'rgba(255,255,255,0.8)', fontWeight: '300' },
   scroll:          { flex: 1, marginTop: -16 },
   content:         { paddingTop: 24, paddingHorizontal: 16, paddingBottom: 48, gap: 16 },
   onlineCard:      { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 18, borderWidth: 1.5, borderColor: 'rgba(15,17,23,0.1)', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 8, elevation: 3 },

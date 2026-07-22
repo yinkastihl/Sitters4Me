@@ -1,5 +1,5 @@
 // app/parent-home.tsx
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
   StatusBar, Alert, Dimensions, ActivityIndicator,
@@ -11,7 +11,7 @@ import MapView, { Marker, Circle, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import axios from 'axios';
 
 const { height } = Dimensions.get('window');
@@ -39,6 +39,15 @@ export default function ParentHome() {
   const [activeJobId, setActiveJobId]       = useState<number>(0);
   const activeJobIdRef                      = useRef<number>(0);
   const [profilePhoto, setProfilePhoto]     = useState<string | null>(null);
+  const [hasActiveJob, setHasActiveJob]     = useState(false);
+
+  // Re-check for an active job every time this screen gains focus
+  useFocusEffect(
+    useCallback(() => {
+      const aj = (global as any).activeJob;
+      setHasActiveJob(!!(aj?.job_id));
+    }, [])
+  );
 
   // ── Children details pre-booking modal ────────────────────
   const [showChildrenModal, setShowChildrenModal] = useState(false);
@@ -537,6 +546,19 @@ export default function ParentHome() {
       </LinearGradient>
 
       {/* MAP — shows immediately; GPS refines in background */}
+      {/* ACTIVE JOB RETURN BANNER */}
+      {hasActiveJob && (
+        <TouchableOpacity
+          style={s.activeJobBanner}
+          onPress={() => router.push('/job-accepted')}
+          activeOpacity={0.85}
+        >
+          <View style={s.activeJobBannerDot} />
+          <Text style={s.activeJobBannerText}>🍼 Job in progress · Tap to return</Text>
+          <Text style={s.activeJobBannerChevron}>›</Text>
+        </TouchableOpacity>
+      )}
+
       <View style={s.mapWrap}>
         <MapView
             ref={mapRef}
@@ -1063,6 +1085,10 @@ const s = StyleSheet.create({
   greeting:          { fontSize: 18, fontWeight: '900', color: '#FFFFFF', letterSpacing: -0.3 },
   greetingSub:       { fontSize: 13, color: 'rgba(255,255,255,0.85)', marginTop: 2 },
   settingsBtn:       { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  activeJobBanner:       { flexDirection: 'row', alignItems: 'center', backgroundColor: '#16A34A', paddingVertical: 12, paddingHorizontal: 18, gap: 10 },
+  activeJobBannerDot:    { width: 9, height: 9, borderRadius: 5, backgroundColor: '#FFFFFF', opacity: 0.9 },
+  activeJobBannerText:   { flex: 1, fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
+  activeJobBannerChevron:{ fontSize: 22, color: 'rgba(255,255,255,0.8)', fontWeight: '300' },
   mapWrap:           { flex: 1, position: 'relative' },
   mapLoading:        { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: '#E8F4F8' },
   mapLoadingText:    { fontSize: 14, color: '#5A5F72' },
