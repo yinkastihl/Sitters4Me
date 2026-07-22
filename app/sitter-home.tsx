@@ -157,9 +157,60 @@ export default function SitterHome() {
         sitter_id: sitterId,
       });
       if (res.data?.success && res.data?.data?.job) {
-        showJobPopup(res.data.data.job);
+        const job = res.data.data.job;
+        if (job.is_scheduled) {
+          showScheduledJobPopup(job);  // calm accept/decline — no countdown
+        } else {
+          showJobPopup(job);           // live 60-second countdown
+        }
       }
     } catch {}
+  };
+
+  // ── Scheduled booking request — no countdown, sitter decides at leisure ──
+  const showScheduledJobPopup = (job: any) => {
+    if (modalRef.current) return; // already showing a modal
+    modalRef.current = true;
+    setIncomingJob(job);
+    setShowModal(true);
+    // No ring, no vibration, no countdown for scheduled requests
+  };
+
+  const handleAcceptScheduled = async () => {
+    const job = incomingJob;
+    modalRef.current = false;
+    setShowModal(false);
+    setIncomingJob(null);
+    try {
+      await axios.post(`${JOBS_API}?action=accept_job`, {
+        job_id: job.id, sitter_id: sitterId,
+      });
+      const dt = job.scheduled_time ? new Date(job.scheduled_time) : null;
+      const formatted = dt
+        ? dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) +
+          ' at ' + dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+        : 'the scheduled time';
+      Alert.alert(
+        '✅ Booking Confirmed!',
+        `You\'ve accepted the job for ${formatted}. It will appear in your upcoming jobs.`,
+        [{ text: 'OK' }]
+      );
+      loadUpcoming(); // refresh upcoming list
+    } catch {
+      Alert.alert('Error', 'Could not confirm booking. Please try again.');
+    }
+  };
+
+  const handleDeclineScheduled = async () => {
+    const job = incomingJob;
+    modalRef.current = false;
+    setShowModal(false);
+    setIncomingJob(null);
+    try {
+      await axios.post(`${JOBS_API}?action=decline_job`, {
+        job_id: job.id, sitter_id: sitterId,
+      });
+    } catch { /* non-critical */ }
   };
 
   const showJobPopup = (job: any) => {
@@ -610,7 +661,66 @@ export default function SitterHome() {
       </ScrollView>
 
       {/* JOB REQUEST POPUP — ONLY shows when parent presses "Request Now" and API sends a job */}
-      {showModal && incomingJob && (
+      {showModal && incomingJob && incomingJob.is_scheduled && (
+        /* ── SCHEDULED BOOKING REQUEST MODAL (no countdown) ── */
+        <View style={s.overlay}>
+          <View style={s.modal}>
+            <View style={s.modalBody}>
+              <Text style={s.modalTitle}>📅 Booking Request</Text>
+              <Text style={s.schedReqBadge}>Future Appointment</Text>
+              {(() => {
+                const dt = incomingJob.scheduled_time ? new Date(incomingJob.scheduled_time) : null;
+                const dateStr = dt
+                  ? dt.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+                  : '—';
+                const timeStr = dt
+                  ? dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+                  : '—';
+                const ages: number[] = Array.isArray(incomingJob.children_ages) ? incomingJob.children_ages : [];
+                const kidCount = incomingJob.kids || ages.length || 1;
+                const ageStr = ages.length
+                  ? ages.map((a: number) => a === 0 ? 'Infant' : `${a}yr`).join(', ')
+                  : null;
+                const rows = [
+                  ['Parent',    incomingJob.parent_name || 'Parent'],
+                  ['Date',      dateStr],
+                  ['Time',      timeStr],
+                  ['Duration',  `${incomingJob.duration_hours || 2} hrs`],
+                  ['Children',  ageStr ? `${kidCount} (${ageStr})` : `${kidCount}`],
+                  ['Location',  `${incomingJob.city || ''}, ${incomingJob.state || ''}`],
+                  ['Your rate', `$${incomingJob.rate}/hr`],
+                ];
+                return (
+                  <View style={s.jobDetails}>
+                    {rows.map(([label, val]) => (
+                      <View key={label} style={s.detailRow}>
+                        <Text style={s.detailLabel}>{label}</Text>
+                        <Text style={s.detailValue}>{val}</Text>
+                      </View>
+                    ))}
+                  </View>
+                );
+              })()}
+              {incomingJob.notes ? (
+                <Text style={s.schedReqNotes}>📝 {incomingJob.notes}</Text>
+              ) : null}
+              <View style={s.btnRow}>
+                <TouchableOpacity style={[s.btn, s.btnDecline]} onPress={handleDeclineScheduled} activeOpacity={0.85}>
+                  <Text style={s.btnDeclineText}>Decline</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[s.btn, s.btnAccept]} onPress={handleAcceptScheduled} activeOpacity={0.85}>
+                  <LinearGradient colors={['#16A34A','#15803D']} start={{x:0,y:0}} end={{x:1,y:0}} style={s.btnGrad}>
+                    <Text style={s.btnAcceptText}>Accept Booking</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {showModal && incomingJob && !incomingJob.is_scheduled && (
+        /* ── LIVE JOB REQUEST MODAL (60-second countdown) ── */
         <View style={s.overlay}>
           <View style={s.modal}>
             <View style={s.progTrack}>
@@ -744,4 +854,14 @@ const s = StyleSheet.create({
   declineBtnText:  { color: '#BF3B2E', fontSize: 15, fontWeight: '700' },
   acceptBtn:       { borderRadius: 10, padding: 14, alignItems: 'center' },
   acceptBtnText:   { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
+  // Scheduled booking request modal
+  schedReqBadge:   { fontSize: 12, fontWeight: '700', color: '#9B5BAB', backgroundColor: '#F3EAFA', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, marginBottom: 16, overflow: 'hidden' },
+  schedReqNotes:   { alignSelf: 'stretch', fontSize: 13, color: '#5A5F72', fontStyle: 'italic', marginBottom: 16, lineHeight: 18 },
+  btnRow:          { flexDirection: 'row', gap: 10, alignSelf: 'stretch' },
+  btn:             { flex: 1, borderRadius: 12, overflow: 'hidden' },
+  btnDecline:      { borderWidth: 1.5, borderColor: '#BF3B2E', alignItems: 'center', justifyContent: 'center', padding: 14 },
+  btnDeclineText:  { color: '#BF3B2E', fontSize: 15, fontWeight: '700' },
+  btnAccept:       { flex: 2 },
+  btnGrad:         { padding: 14, alignItems: 'center' },
+  btnAcceptText:   { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
 });

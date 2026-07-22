@@ -249,6 +249,16 @@ export default function ParentHome() {
 
   // ── OPEN children modal before booking ───────────────────────
   const openBookingModal = () => {
+    if (hasActiveJob) {
+      return Alert.alert(
+        'Active Job In Progress',
+        'You already have a babysitter booked. Please complete or cancel your current job before requesting a new one.',
+        [
+          { text: 'Return to Job', onPress: () => router.push('/job-accepted') },
+          { text: 'Dismiss', style: 'cancel' },
+        ]
+      );
+    }
     if (!loc) return Alert.alert('Location Required', 'Please enable location to request a sitter.');
     setShowChildrenModal(true);
   };
@@ -629,7 +639,44 @@ export default function ParentHome() {
         {/* Default state */}
         {!selected && !requesting && !requestSent && (
           <View>
-            {onlineSitters.length === 0 && !sittersLoading ? (
+            {/* Active job in progress — block new bookings */}
+            {hasActiveJob ? (
+              <View style={s.activeJobDrawer}>
+                <View style={s.activeJobDrawerRow}>
+                  <View style={s.activeJobDrawerDot} />
+                  <Text style={s.activeJobDrawerTitle}>Job In Progress</Text>
+                </View>
+                <Text style={s.activeJobDrawerSub}>
+                  Your babysitter is currently active. You can't request another sitter until this job is complete or cancelled.
+                </Text>
+                <TouchableOpacity
+                  style={s.activeJobDrawerBtn}
+                  onPress={() => router.push('/job-accepted')}
+                  activeOpacity={0.85}
+                >
+                  <LinearGradient colors={['#16A34A', '#15803D']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.activeJobDrawerBtnGrad}>
+                    <Text style={s.activeJobDrawerBtnText}>Return to Active Job  ›</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+                  <TouchableOpacity style={{ flex: 1 }} onPress={() => setShowScheduleModal(true)} activeOpacity={0.85}>
+                    <LinearGradient colors={['#9B5BAB', '#C93488']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.schedBtn}>
+                      <Text style={s.schedBtnText}>📅 Schedule</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={{ flex: 1 }} onPress={() => router.push('/parent-history')} activeOpacity={0.85}>
+                    <LinearGradient colors={['#1A7F6E', '#0D5C51']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.schedBtn}>
+                      <Text style={s.schedBtnText}>📋 History</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={{ flex: 1 }} onPress={() => router.push('/parent-payment-settings')} activeOpacity={0.85}>
+                    <LinearGradient colors={['#02A4E2', '#0270C8']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.schedBtn}>
+                      <Text style={s.schedBtnText}>💳 Payment</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : onlineSitters.length === 0 && !sittersLoading ? (
               // No online sitters
               <View style={s.emptyBox}>
                 <Text style={s.emptyIcon}>😔</Text>
@@ -691,35 +738,38 @@ export default function ParentHome() {
               </>
             )}
 
-            <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
-              <TouchableOpacity
-                style={{ flex: 1 }}
-                onPress={() => setShowScheduleModal(true)}
-                activeOpacity={0.85}
-              >
-                <LinearGradient colors={['#9B5BAB', '#C93488']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.schedBtn}>
-                  <Text style={s.schedBtnText}>📅 Schedule</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={{ flex: 1 }}
-                onPress={() => router.push('/parent-history')}
-                activeOpacity={0.85}
-              >
-                <LinearGradient colors={['#1A7F6E', '#0D5C51']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.schedBtn}>
-                  <Text style={s.schedBtnText}>📋 History</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={{ flex: 1 }}
-                onPress={() => router.push('/parent-payment-settings')}
-                activeOpacity={0.85}
-              >
-                <LinearGradient colors={['#02A4E2', '#0270C8']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.schedBtn}>
-                  <Text style={s.schedBtnText}>💳 Payment</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            </View>
+            {/* Schedule / History / Payment — only when no active job */}
+            {!hasActiveJob && (
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+                <TouchableOpacity
+                  style={{ flex: 1 }}
+                  onPress={() => setShowScheduleModal(true)}
+                  activeOpacity={0.85}
+                >
+                  <LinearGradient colors={['#9B5BAB', '#C93488']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.schedBtn}>
+                    <Text style={s.schedBtnText}>📅 Schedule</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={{ flex: 1 }}
+                  onPress={() => router.push('/parent-history')}
+                  activeOpacity={0.85}
+                >
+                  <LinearGradient colors={['#1A7F6E', '#0D5C51']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.schedBtn}>
+                    <Text style={s.schedBtnText}>📋 History</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={{ flex: 1 }}
+                  onPress={() => router.push('/parent-payment-settings')}
+                  activeOpacity={0.85}
+                >
+                  <LinearGradient colors={['#02A4E2', '#0270C8']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.schedBtn}>
+                    <Text style={s.schedBtnText}>💳 Payment</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         )}
 
@@ -1085,6 +1135,14 @@ const s = StyleSheet.create({
   greeting:          { fontSize: 18, fontWeight: '900', color: '#FFFFFF', letterSpacing: -0.3 },
   greetingSub:       { fontSize: 13, color: 'rgba(255,255,255,0.85)', marginTop: 2 },
   settingsBtn:       { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  activeJobDrawer:       { gap: 12 },
+  activeJobDrawerRow:    { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  activeJobDrawerDot:    { width: 10, height: 10, borderRadius: 5, backgroundColor: '#16A34A' },
+  activeJobDrawerTitle:  { fontSize: 17, fontWeight: '900', color: '#0F1117' },
+  activeJobDrawerSub:    { fontSize: 13, color: '#5A5F72', lineHeight: 19 },
+  activeJobDrawerBtn:    { borderRadius: 14, overflow: 'hidden' },
+  activeJobDrawerBtnGrad:{ padding: 16, alignItems: 'center' },
+  activeJobDrawerBtnText:{ color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
   activeJobBanner:       { flexDirection: 'row', alignItems: 'center', backgroundColor: '#16A34A', paddingVertical: 12, paddingHorizontal: 18, gap: 10 },
   activeJobBannerDot:    { width: 9, height: 9, borderRadius: 5, backgroundColor: '#FFFFFF', opacity: 0.9 },
   activeJobBannerText:   { flex: 1, fontSize: 14, fontWeight: '700', color: '#FFFFFF' },

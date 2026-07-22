@@ -395,6 +395,17 @@ switch ($action) {
         $parent = row("SELECT * FROM parents WHERE id=?", [$parent_id]);
         if (!$parent) err('Parent account not found');
 
+        // Block double-booking: reject if parent already has an active job
+        $existingJob = row(
+            "SELECT id, status FROM jobs WHERE parent_id=?
+             AND status IN ('Open','Sitter hired','Sitter offered','Sitter arrived','In progress')
+             ORDER BY id DESC LIMIT 1",
+            [$parent_id]
+        );
+        if ($existingJob) {
+            err('You already have an active booking (Job #' . $existingJob['id'] . ' — ' . $existingJob['status'] . '). Please complete or cancel it before requesting a new sitter.', 400);
+        }
+
         // Find online sitters in radius
         $sitters = getNearestSitters($lat, $lng, $radius);
         if (empty($sitters)) {
@@ -517,17 +528,27 @@ switch ($action) {
              WHERE job_id=? AND sitter_id!=? AND status IN ('pending','notified')",
             [$job_id, $sitter_id]);
 
-        // Notify parent
+        // Notify parent — message differs for live vs scheduled jobs
         $job    = row("SELECT j.*, p.reg_id AS parent_token, p.fname AS pname
                         FROM jobs j LEFT JOIN `user` p ON p.u_id=j.parent_id AND p.user_type='parent'
                         WHERE j.id=?", [$job_id]);
         $sitter = row("SELECT fname, lname FROM sitters WHERE id=?", [$sitter_id]);
         if (!empty($job['parent_token'])) {
             $sitterName = trim(($sitter['fname']??'') . ' ' . ($sitter['lname']??''));
-            sendExpoPush($job['parent_token'], '🎉 Sitter Found!',
-                "$sitterName accepted your request and is on the way!",
-                ['type' => 'job_accepted', 'job_id' => $job_id, 'sitter_id' => $sitter_id,
-                 'sitter_name' => $sitterName]);
+            $isScheduled = !empty($job['scheduled_time']) &&
+                           strtotime($job['scheduled_time']) > time();
+            if ($isScheduled) {
+                $formattedDt = date('D, M j \a\t g:i A', strtotime($job['scheduled_time']));
+                sendExpoPush($job['parent_token'], '✅ Booking Confirmed!',
+                    "$sitterName confirmed your booking for $formattedDt.",
+                    ['type' => 'job_accepted', 'job_id' => $job_id, 'sitter_id' => $sitter_id,
+                     'sitter_name' => $sitterName, 'scheduled' => true]);
+            } else {
+                sendExpoPush($job['parent_token'], '🎉 Sitter Found!',
+                    "$sitterName accepted your request and is on the way!",
+                    ['type' => 'job_accepted', 'job_id' => $job_id, 'sitter_id' => $sitter_id,
+                     'sitter_name' => $sitterName, 'scheduled' => false]);
+            }
         }
         ok(['job_id' => $job_id, 'sitter_id' => $sitter_id], 'Job accepted');
 
@@ -554,8 +575,8 @@ switch ($action) {
             run("UPDATE job_routing SET status='notified', notified_at=NOW()
                  WHERE job_id=? AND sitter_id=?", [$job_id, $next['sitter_id']]);
             if (!empty($next['device_token'])) {
-                // Read kids and children_ages from jobs table (not parents table)
-                $job = row("SELECT j.kids, j.children_ages, p.fname AS pname, p.lname AS plname
+                $job = row("SELECT j.kids, j.children_ages, j.scheduled_time, j.duration_hours,
+                                   p.fname AS pname, p.lname AS plname
                              FROM jobs j LEFT JOIN parents p ON p.id=j.parent_id
                              WHERE j.id=?", [$job_id]);
                 $jKids     = (int)($job['kids'] ?? 1);
@@ -564,10 +585,21 @@ switch ($action) {
                 $agesSummary = !empty($jAges)
                     ? ' · Ages: ' . implode(', ', array_map(fn($a) => $a===0?'Infant':"{$a}yr", $jAges))
                     : '';
-                sendExpoPush($next['device_token'], '🍼 New Job Request!',
-                    "From $pName · $jKids child(ren)$agesSummary · \${$next['minrate']}/hr · 60s to accept!",
-                    ['type'=>'job_request','job_id'=>$job_id,'parent_name'=>$pName,
-                     'kids'=>$jKids,'children_ages'=>$jAges,'rate'=>$next['minrate'],'timeout'=>60]);
+                $isScheduled = !empty($job['scheduled_time']) &&
+                               strtotime($job['scheduled_time']) > time();
+                if ($isScheduled) {
+                    $formattedDt = date('D, M j \a\t g:i A', strtotime($job['scheduled_time']));
+                    sendExpoPush($next['device_token'], '📅 New Booking Request',
+                        "From $pName · $formattedDt · $jKids child(ren)$agesSummary · \${$next['minrate']}/hr",
+                        ['type'=>'scheduled_request','job_id'=>$job_id,'parent_name'=>$pName,
+                         'kids'=>$jKids,'children_ages'=>$jAges,'rate'=>$next['minrate'],
+                         'scheduled_time'=>$job['scheduled_time'],'duration_hours'=>$job['duration_hours']??2]);
+                } else {
+                    sendExpoPush($next['device_token'], '🍼 New Job Request!',
+                        "From $pName · $jKids child(ren)$agesSummary · \${$next['minrate']}/hr · 60s to accept!",
+                        ['type'=>'job_request','job_id'=>$job_id,'parent_name'=>$pName,
+                         'kids'=>$jKids,'children_ages'=>$jAges,'rate'=>$next['minrate'],'timeout'=>60]);
+                }
             }
             ok(['routed' => true, 'next_sitter' => $next['sitter_id']], 'Routed to next sitter');
         } else {
@@ -993,7 +1025,43 @@ switch ($action) {
         } else if ($job) {
             $job['children_ages'] = [];
         }
-        ok(['job' => $job ?: null], $job ? 'Incoming job found' : 'No incoming jobs');
+        if ($job) {
+            $job['is_scheduled'] = false;
+            ok(['job' => $job], 'Incoming job found');
+        }
+
+        // ── No live job — check for a pending scheduled booking request ──
+        $schedJob = row("
+            SELECT j.id, j.kids, j.children_ages, j.address, j.city, j.state,
+                   j.scheduled_time, j.duration_hours, j.notes,
+                   COALESCE(s.minrate, 15) AS rate,
+                   COALESCE(s.additional_child_rate, 0) AS additional_child_rate,
+                   CONCAT(p.fname, ' ', p.lname) AS parent_name,
+                   p.cellphone AS parent_phone,
+                   jr.id AS routing_id
+            FROM job_routing jr
+            INNER JOIN jobs    j ON j.id = jr.job_id
+            INNER JOIN parents p ON p.id = j.parent_id
+            LEFT  JOIN sitters s ON s.id = jr.sitter_id
+            WHERE jr.sitter_id = ?
+              AND jr.status    = 'notified'
+              AND j.status     = 'Scheduled'
+              AND j.scheduled_time > NOW()
+            ORDER BY j.scheduled_time ASC
+            LIMIT 1
+        ", [$sitter_id]);
+        if ($schedJob) {
+            if (!empty($schedJob['children_ages'])) {
+                $schedJob['children_ages'] = json_decode($schedJob['children_ages'], true) ?: [];
+            } else {
+                $schedJob['children_ages'] = [];
+            }
+            $schedJob['is_scheduled']   = true;
+            $schedJob['scheduled_time'] = utcIso($schedJob['scheduled_time']);
+            ok(['job' => $schedJob], 'Scheduled booking request found');
+        }
+
+        ok(['job' => null], 'No incoming jobs');
 
     // ── GET SITTER UPCOMING SCHEDULED JOBS ───────────────────
     // Returns jobs accepted by this sitter that have a future scheduled_time
@@ -1220,11 +1288,80 @@ switch ($action) {
             ]
         );
         $job_id = db()->lastInsertId();
+
+        // ── Immediately dispatch to sitters ──────────────────────
+        // Scheduled jobs need a sitter assigned in advance, not just at T-30min.
+        // Priority: preferred sitter first, then nearest online sitters.
+        $dispatchedTo = null;
+        try {
+            ensureRoutingTable();
+            $parentInfo = row("SELECT fname, lname FROM parents WHERE id=?", [$parent_id]);
+            $pName = trim(($parentInfo['fname']??'').' '.($parentInfo['lname']??''));
+            $formattedDt = $dt->format('D, M j \a\t g:i A');
+            $agesArr  = $childrenAges;
+            $ageStr   = !empty($agesArr)
+                ? ' · Ages: '.implode(', ', array_map(fn($a)=>$a===0?'Infant':"{$a}yr", $agesArr))
+                : '';
+
+            // Try preferred sitter first
+            if ($preferred_sitter_id) {
+                $prefRow = row("SELECT s.id, s.minrate, u.reg_id AS device_token
+                                FROM sitters s
+                                INNER JOIN `user` u ON u.u_id=s.id AND u.user_type='sitter'
+                                WHERE s.id=?", [$preferred_sitter_id]);
+                if ($prefRow) {
+                    run("INSERT IGNORE INTO job_routing (job_id,sitter_id,distance_mi,status,notified_at)
+                         VALUES (?,?,0,'notified',NOW())", [$job_id, $preferred_sitter_id]);
+                    if (!empty($prefRow['device_token'])) {
+                        sendExpoPush($prefRow['device_token'],
+                            '📅 New Booking Request',
+                            "From $pName · $formattedDt · {$kids} child(ren){$ageStr} · \${$prefRow['minrate']}/hr",
+                            ['type'=>'scheduled_request','job_id'=>$job_id,'scheduled_time'=>$mysqlDt,
+                             'parent_name'=>$pName,'kids'=>$kids,'children_ages'=>$agesArr,
+                             'rate'=>$prefRow['minrate'],'duration_hours'=>$duration_hours]);
+                    }
+                    $dispatchedTo = $preferred_sitter_id;
+                }
+            }
+
+            // Fall back to nearest online sitters if no preferred sitter was dispatched
+            if (!$dispatchedTo) {
+                $jobLat = $lat ?: ($parent['latitude']  ?? 0);
+                $jobLng = $lng ?: ($parent['longitude'] ?? 0);
+                if ($jobLat && $jobLng) {
+                    $nearby = getNearestSitters($jobLat, $jobLng, 20); // wider radius for advance booking
+                    foreach ($nearby as $ns) {
+                        $d = round((float)($ns['distance_away'] ?? 0), 2);
+                        run("INSERT IGNORE INTO job_routing (job_id,sitter_id,distance_mi,status) VALUES(?,?,?,'pending')",
+                            [$job_id, $ns['id'], $d]);
+                    }
+                    if (!empty($nearby)) {
+                        $first = $nearby[0];
+                        run("UPDATE job_routing SET status='notified',notified_at=NOW()
+                             WHERE job_id=? AND sitter_id=?", [$job_id, $first['id']]);
+                        if (!empty($first['device_token'])) {
+                            sendExpoPush($first['device_token'],
+                                '📅 New Booking Request',
+                                "From $pName · $formattedDt · {$kids} child(ren){$ageStr} · \${$first['minrate']}/hr",
+                                ['type'=>'scheduled_request','job_id'=>$job_id,'scheduled_time'=>$mysqlDt,
+                                 'parent_name'=>$pName,'kids'=>$kids,'children_ages'=>$agesArr,
+                                 'rate'=>$first['minrate'],'duration_hours'=>$duration_hours]);
+                        }
+                        $dispatchedTo = (int)$first['id'];
+                    }
+                }
+            }
+        } catch (Exception $e) {
+            error_log('schedule_job dispatch error: ' . $e->getMessage());
+            // Non-fatal — job is created, dispatch failed
+        }
+
         ok([
             'job_id'               => (int)$job_id,
             'scheduled_time'       => $mysqlDt,
             'duration_hours'       => $duration_hours,
             'preferred_sitter_id'  => $preferred_sitter_id,
+            'dispatched_to'        => $dispatchedTo,
             'formatted'            => $dt->format('l, F j, Y \a\t g:i A'),
         ], 'Appointment scheduled for ' . $dt->format('M j, Y g:i A'));
 
