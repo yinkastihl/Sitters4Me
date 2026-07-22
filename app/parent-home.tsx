@@ -271,7 +271,6 @@ export default function ParentHome() {
         global.currentUser = { ...global.currentUser, stripe_customer_id: pm.data.data.customer_id || 'confirmed' };
       } catch {
         // API error — allow booking but warn
-        console.log('payment check failed — allowing booking');
       }
     }
 
@@ -294,14 +293,19 @@ export default function ParentHome() {
     );
     pulseLoop.current.start();
     try {
+      // Pick up preferred sitter set from "Request Now" on sitter profile
+      const preferredId = (global as any).requestSitterOnReturn?.id || null;
+      (global as any).requestSitterOnReturn = null;
+
       const res = await axios.post(`${JOBS_API}?action=request_live`, {
-        parent_id:     user.id || 1,
-        lat:           loc.latitude,
-        lng:           loc.longitude,
-        radius:        RADIUS_MILES,
-        kids:          kidsCount,
-        children_ages: ages,
-        address:       'Current location',
+        parent_id:            user.id || 1,
+        lat:                  loc.latitude,
+        lng:                  loc.longitude,
+        radius:               RADIUS_MILES,
+        kids:                 kidsCount,
+        children_ages:        ages,
+        address:              'Current location',
+        ...(preferredId ? { preferred_sitter_id: preferredId } : {}),
       });
 
       pulseLoop.current?.stop?.();
@@ -332,7 +336,6 @@ export default function ParentHome() {
         try {
           const sr = await axios.post(`${JOBS_API}?action=job_status`, { job_id: jid });
           const d = sr.data?.data;
-          console.log('job_status response:', JSON.stringify(d));
           // Check all possible accepted states
           const accepted = d?.assigned === true ||
                            d?.assigned === 1 ||
@@ -356,9 +359,26 @@ export default function ParentHome() {
               job_data:    d,
             };
             router.push('/job-accepted');
+          } else if (d?.status === 'Closed' || d?.status === 'Cancelled') {
+            // All sitters declined or timed out — reset so parent can try again
+            clearInterval(pollRef.current);
+            clearInterval(sitterPollRef.current);
+            pollRef.current = null;
+            activeJobIdRef.current = 0;
+            searchActiveRef.current = false;
+            pulseLoop.current?.stop?.();
+            pulseAnim.setValue(1);
+            setRequesting(false);
+            setRequestSent(false);
+            setActiveJobId(0);
+            Alert.alert(
+              'No Sitters Available',
+              'All nearby sitters declined or didn\'t respond. Please try again in a few minutes.',
+              [{ text: 'OK' }]
+            );
           }
-        } catch (e) {
-          console.log('poll error:', e);
+        } catch {
+          // network hiccup — keep polling
         }
       }, 3000);
 

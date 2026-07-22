@@ -265,7 +265,7 @@ export default function ActiveJob() {
       if (stopRes.data?.data?.hours > 0) {
         billableHours = stopRes.data.data.hours;
       }
-    } catch (e) { console.log('stop_job error:', e); }
+    } catch { /* stop_job failed — proceed with charge anyway */ }
 
     // 2. Trigger Stripe charge on parent's saved card
     try {
@@ -296,8 +296,7 @@ export default function ActiveJob() {
           [{ text: 'OK' }]
         );
       }
-    } catch (e) {
-      console.log('charge error:', e);
+    } catch {
       Alert.alert(
         'Job Complete',
         `Duration: ${fmt(elapsed)}\nEarnings: $${earnings}\n\nPayment will be processed shortly.`,

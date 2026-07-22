@@ -310,7 +310,7 @@ export default function SitterHome() {
       } else {
         setIsOnline(val);
         (global as any).sitterOnline = val;
-        console.log('set_online warning:', res.data?.error);
+        // set_online returned non-success — UI still updated optimistically
       }
       if (!val) {
         clearInterval(pollRef.current);
@@ -319,9 +319,8 @@ export default function SitterHome() {
         setShowModal(false);
         Vibration.cancel();
       }
-    } catch (e: any) {
+    } catch {
       // Network error — still update UI optimistically so user isn't stuck
-      console.log('set_online error:', e?.message);
       setIsOnline(val);
       (global as any).sitterOnline = val;
       if (!val) {

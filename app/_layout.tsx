@@ -66,6 +66,7 @@ export default function RootLayout() {
         <Stack.Screen name="parent-favorites" />
         <Stack.Screen name="parent-profile-edit" />
         <Stack.Screen name="chat" />
+        <Stack.Screen name="reset-password" />
       </Stack>
     </>
   );

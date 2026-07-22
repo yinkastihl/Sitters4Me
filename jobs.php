@@ -374,12 +374,13 @@ switch ($action) {
 
     // ── REQUEST LIVE SITTER ───────────────────────────────────
     case 'request_live':
-        $parent_id     = (int)($body['parent_id']     ?? 0);
-        $lat           = (float)($body['lat']          ?? 0);
-        $lng           = (float)($body['lng']          ?? 0);
-        $radius        = (float)($body['radius']       ?? 10);
-        $kids          = (int)($body['kids']           ?? 1);
-        $address       = $body['address']              ?? '';
+        $parent_id        = (int)($body['parent_id']        ?? 0);
+        $lat              = (float)($body['lat']             ?? 0);
+        $lng              = (float)($body['lng']             ?? 0);
+        $radius           = (float)($body['radius']          ?? 10);
+        $kids             = (int)($body['kids']              ?? 1);
+        $address          = $body['address']                 ?? '';
+        $preferred_sid    = (int)($body['preferred_sitter_id'] ?? 0);
         // children_ages: array of ints from app e.g. [3, 7, 5]
         $childrenAges  = $body['children_ages']        ?? [];
         if (!is_array($childrenAges)) $childrenAges = [];
@@ -401,6 +402,18 @@ switch ($action) {
                'No online sitters within ' . $radius . ' miles');
         }
 
+        // If a preferred sitter is in the pool, move them to the front
+        if ($preferred_sid > 0) {
+            $prefIdx = -1;
+            foreach ($sitters as $i => $s) {
+                if ((int)$s['id'] === $preferred_sid) { $prefIdx = $i; break; }
+            }
+            if ($prefIdx > 0) {
+                $preferred = array_splice($sitters, $prefIdx, 1);
+                array_unshift($sitters, $preferred[0]);
+            }
+        }
+
         // Build human-readable ages summary for push notification
         $agesSummary = '';
         if (!empty($childrenAges)) {
@@ -408,10 +421,11 @@ switch ($action) {
             $agesSummary = " · Ages: $agesStr";
         }
 
-        // Create job record — include children_ages
+        // Create job record — include children_ages and preferred_sitter_id
+        ensureExtraColumns();
         run("INSERT INTO jobs
-                (parent_id, address, city, state, latitude, longitude, kids, children_ages, status, post_time, charge_amt)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Open', NOW(), ?)",
+                (parent_id, address, city, state, latitude, longitude, kids, children_ages, preferred_sitter_id, status, post_time, charge_amt)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Open', NOW(), ?)",
             [
                 $parent_id,
                 $address ?: ($parent['address'] ?? ''),
@@ -419,6 +433,7 @@ switch ($action) {
                 $parent['state'] ?? '',
                 $lat, $lng, $kids,
                 $childrenAgesJson,
+                $preferred_sid ?: null,
                 $sitters[0]['minrate'] ?? 15,
             ]
         );
@@ -426,14 +441,14 @@ switch ($action) {
 
         // Create routing queue
         ensureRoutingTable();
-        // Insert in order of distance — nearest sitter gets id=1 (lowest) so ORDER BY jr.id ASC picks nearest first
+        // Insert in order — preferred sitter (if any) is already first in $sitters
         foreach ($sitters as $s) {
             $dist = round((float)($s['distance_away'] ?? 0), 2);
             run("INSERT INTO job_routing (job_id, sitter_id, distance_mi, status) VALUES (?, ?, ?, 'pending')",
                 [$job_id, $s['id'], $dist]);
         }
 
-        // Mark first (nearest) sitter as notified
+        // Mark first sitter as notified (preferred if present, otherwise nearest)
         $first = $sitters[0];
         run("UPDATE job_routing SET status='notified', notified_at=NOW()
              WHERE job_id=? AND sitter_id=?",
