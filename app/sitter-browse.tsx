@@ -62,6 +62,7 @@ export default function SitterBrowse() {
   const [loading,   setLoading]   = useState(true);
   const [refreshing,setRefreshing]= useState(false);
   const [search,    setSearch]    = useState('');
+  const [apiError,  setApiError]  = useState<string | null>(null);
   const [filters,   setFilters]   = useState<Record<string, boolean>>({
     online_only: false,
     filter_cpr: false,
@@ -75,6 +76,7 @@ export default function SitterBrowse() {
     const q      = opts?.searchVal  ?? search;
     const f      = opts?.filtersVal ?? filters;
     if (!opts?.isRefresh) setLoading(true);
+    setApiError(null);
     try {
       const res = await axios.post(`${JOBS_API}?action=browse_sitters`, {
         lat:          loc.latitude,
@@ -88,8 +90,17 @@ export default function SitterBrowse() {
         filter_multi: f.filter_multi  ? 1 : 0,
         limit: 60,
       });
-      if (res.data?.success) setSitters(res.data.data || []);
-    } catch {}
+      if (res.data?.success) {
+        setSitters(res.data.data || []);
+      } else {
+        // Server returned success:false — show the actual error so it's diagnosable
+        setApiError(res.data?.error || 'Server returned an error');
+        setSitters([]);
+      }
+    } catch (e: any) {
+      setApiError(e?.message || 'Network error — check your connection');
+      setSitters([]);
+    }
     finally { setLoading(false); setRefreshing(false); }
   }, [search, filters, loc]);
 
@@ -268,13 +279,29 @@ export default function SitterBrowse() {
           }
           ListEmptyComponent={
             <View style={s.emptyBox}>
-              <Text style={s.emptyIcon}>🔍</Text>
-              <Text style={s.emptyTitle}>No sitters found</Text>
-              <Text style={s.emptySub}>
-                {Object.values(filters).some(Boolean) || search
-                  ? 'Try removing some filters or clearing the search.'
-                  : 'No sitters have registered in your area yet.'}
-              </Text>
+              {apiError ? (
+                <>
+                  <Text style={s.emptyIcon}>⚠️</Text>
+                  <Text style={s.emptyTitle}>Could not load sitters</Text>
+                  <Text style={s.emptySub}>{apiError}</Text>
+                  <TouchableOpacity
+                    style={{ marginTop: 16, backgroundColor: '#C93488', borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10 }}
+                    onPress={() => load()}
+                  >
+                    <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>Try Again</Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  <Text style={s.emptyIcon}>🔍</Text>
+                  <Text style={s.emptyTitle}>No sitters found</Text>
+                  <Text style={s.emptySub}>
+                    {Object.values(filters).some(Boolean) || search
+                      ? 'Try removing some filters or clearing the search.'
+                      : 'No sitters have registered in your area yet.'}
+                  </Text>
+                </>
+              )}
             </View>
           }
           // Section header before offline sitters

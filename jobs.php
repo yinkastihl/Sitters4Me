@@ -574,37 +574,42 @@ switch ($action) {
                END"
             : "NULL";
 
-        $stmt = db()->prepare("
-            SELECT s.id,
-                   s.fname, s.lname,
-                   COALESCE(s.minrate, 15)       AS minrate,
-                   s.about,
-                   s.image, s.bgcheck,
-                   s.experience_years,
-                   COALESCE(s.avg_rating,0)       AS avg_rating,
-                   COALESCE(s.review_count,0)     AS review_count,
-                   COALESCE(s.badge_cpr,0)               AS badge_cpr,
-                   COALESCE(s.badge_infant,0)             AS badge_infant,
-                   COALESCE(s.badge_special_needs,0)      AS badge_special_needs,
-                   COALESCE(s.badge_multilingual,0)       AS badge_multilingual,
-                   COALESCE(s.checkr_status,'pending')    AS checkr_status,
-                   s.city, s.state,
-                   COALESCE(u.online,0)                   AS online,
-                   $distExpr                              AS distance_away
-            FROM sitters s
-            LEFT JOIN \`user\` u ON u.u_id = s.id AND u.user_type = 'sitter'
-            $whereStr
-            ORDER BY
-                COALESCE(u.online,0) DESC,
-                ($distExpr IS NULL) ASC,
-                $distExpr ASC,
-                COALESCE(s.avg_rating,0) DESC
-            LIMIT ? OFFSET ?
-        ");
+        // Wrap in try-catch so any SQL error surfaces as a readable message
+        // instead of silently returning an empty list to the parent.
+        try {
+            $stmt = db()->prepare("
+                SELECT s.id,
+                       s.fname, s.lname,
+                       COALESCE(s.minrate, 15)              AS minrate,
+                       s.about,
+                       s.image, s.bgcheck,
+                       s.experience_years,
+                       COALESCE(s.avg_rating,0)             AS avg_rating,
+                       COALESCE(s.review_count,0)           AS review_count,
+                       COALESCE(s.badge_cpr,0)              AS badge_cpr,
+                       COALESCE(s.badge_infant,0)           AS badge_infant,
+                       COALESCE(s.badge_special_needs,0)    AS badge_special_needs,
+                       COALESCE(s.badge_multilingual,0)     AS badge_multilingual,
+                       COALESCE(s.checkr_status,'pending')  AS checkr_status,
+                       s.city, s.state,
+                       COALESCE(u.online,0)                 AS online,
+                       $distExpr                            AS distance_away
+                FROM sitters s
+                LEFT JOIN \`user\` u ON u.u_id = s.id AND u.user_type = 'sitter'
+                $whereStr
+                ORDER BY
+                    COALESCE(u.online,0) DESC,
+                    (distance_away IS NULL) ASC,
+                    distance_away ASC,
+                    COALESCE(s.avg_rating,0) DESC
+                LIMIT $limit OFFSET $offset
+            ");
 
-        $allParams = array_merge($params, [$limit, $offset]);
-        $stmt->execute($allParams);
-        $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $stmt->execute($params);
+            $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Exception $e) {
+            err('browse_sitters query failed: ' . $e->getMessage());
+        }
 
         // Cast numeric fields
         $results = array_map(function($r) {
