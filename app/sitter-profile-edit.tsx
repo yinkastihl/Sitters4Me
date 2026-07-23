@@ -2,11 +2,12 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ScrollView, Alert, ActivityIndicator, KeyboardAvoidingView, Platform, Linking,
+  ScrollView, Alert, ActivityIndicator, KeyboardAvoidingView, Platform, Linking, Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
 import axios from 'axios';
 
 const JOBS_API       = 'https://sitters4me.com/api/jobs.php';
@@ -33,8 +34,13 @@ export default function SitterProfileEdit() {
   const [badgeSpecialNeeds, setBadgeSpecialNeeds] = useState(false);
   const [badgeMultilingual, setBadgeMultilingual] = useState(false);
 
+  // Photo upload
+  const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
   // Display-only
   const displayName = `${user.fname || ''} ${user.lname || ''}`.trim() || 'Your Name';
+  const initials    = `${(user.fname || '?')[0]}${(user.lname || '?')[0]}`.toUpperCase();
 
   useEffect(() => { loadProfile(); }, []);
 
@@ -56,6 +62,7 @@ export default function SitterProfileEdit() {
         setBadgeInfant(d.badge_infant == 1 || d.badge_infant === true);
         setBadgeSpecialNeeds(d.badge_special_needs == 1 || d.badge_special_needs === true);
         setBadgeMultilingual(d.badge_multilingual == 1 || d.badge_multilingual === true);
+        if (d.image) setProfilePhoto(`https://sitters4me.com/uploads/${d.image}`);
       } else {
         applyUserDefaults();
       }
@@ -144,6 +151,44 @@ export default function SitterProfileEdit() {
     }
   };
 
+  const pickPhoto = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission Required', 'Please allow photo access in Settings to upload a profile photo.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+      base64: true,
+    });
+    if (result.canceled || !result.assets?.[0]?.base64) return;
+    const base64 = result.assets[0].base64!;
+    const mimeType = result.assets[0].mimeType || 'image/jpeg';
+    setUploadingPhoto(true);
+    try {
+      const uploadRes = await axios.post(`${JOBS_API}?action=upload_photo`, {
+        user_id:   user.id,
+        user_type: 'sitter',
+        image:     `data:${mimeType};base64,${base64}`,
+      });
+      if (uploadRes.data?.success) {
+        const uri = `https://sitters4me.com/uploads/${uploadRes.data.filename}`;
+        setProfilePhoto(uri);
+        if (global.currentUser) (global.currentUser as any).image = uploadRes.data.filename;
+        Alert.alert('Photo Updated ✓', 'Your profile photo has been saved.');
+      } else {
+        Alert.alert('Upload Failed', uploadRes.data?.error || 'Could not upload photo.');
+      }
+    } catch {
+      Alert.alert('Upload Failed', 'Could not reach the server. Please try again.');
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
   const requestNameChange = () => {
     const subject = encodeURIComponent('Name Change Request');
     const body    = encodeURIComponent(
@@ -205,6 +250,26 @@ export default function SitterProfileEdit() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
+
+          {/* ── PROFILE PHOTO ─────────────────────────────── */}
+          <View style={s.section}>
+            <Text style={s.sectionTitle}>Profile Photo</Text>
+            <Text style={s.sectionSub}>A clear photo helps parents feel comfortable choosing you</Text>
+            <TouchableOpacity style={s.photoWrap} onPress={pickPhoto} activeOpacity={0.8} disabled={uploadingPhoto}>
+              {profilePhoto
+                ? <Image source={{ uri: profilePhoto }} style={s.photoImg} />
+                : <View style={s.photoPlaceholder}>
+                    <Text style={s.photoInitials}>{initials}</Text>
+                  </View>
+              }
+              <View style={s.photoBadge}>
+                {uploadingPhoto
+                  ? <ActivityIndicator size="small" color="#FFFFFF" />
+                  : <Text style={s.photoBadgeIcon}>📷</Text>
+                }
+              </View>
+            </TouchableOpacity>
+          </View>
 
           {/* ── NAME (READ-ONLY) ──────────────────────────── */}
           <View style={s.section}>
@@ -514,6 +579,14 @@ const s = StyleSheet.create({
   badgeToggleLabel: { fontSize: 15, fontWeight: '700', color: '#0F1117' },
   badgeToggleDesc:  { fontSize: 12, color: '#9B9FAE', marginTop: 2 },
   badgeToggleCheck: { width: 28, height: 28, borderRadius: 14, borderWidth: 2, borderColor: '#D9D6CE', alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' },
+
+  // Profile photo
+  photoWrap:        { alignSelf: 'center', width: 100, height: 100, marginVertical: 8 },
+  photoImg:         { width: 100, height: 100, borderRadius: 50, borderWidth: 3, borderColor: '#C93488' },
+  photoPlaceholder: { width: 100, height: 100, borderRadius: 50, backgroundColor: '#9B5BAB', alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: '#C93488' },
+  photoInitials:    { fontSize: 36, fontWeight: '800', color: '#FFFFFF' },
+  photoBadge:       { position: 'absolute', bottom: 0, right: 0, width: 30, height: 30, borderRadius: 15, backgroundColor: '#C93488', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#FFFFFF' },
+  photoBadgeIcon:   { fontSize: 14 },
 
   // Save / Cancel
   saveWrap:         { marginTop: 6 },

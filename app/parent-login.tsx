@@ -75,6 +75,20 @@ export default function ParentLogin() {
             push_token: pushToken,
           }).catch(() => {}); // fire-and-forget
         }
+        // Check for an in-progress job — restore to job-accepted if found
+        try {
+          const aj = await axios.post(`${JOBS_API}?action=get_parent_active_job`, { parent_id: res.data.data.id });
+          if (aj.data?.success && aj.data?.data?.id) {
+            const job = aj.data.data;
+            (global as any).activeJob = {
+              job_id:      job.id,
+              sitter_id:   job.sitter_id,
+              sitter_name: job.sitter_name,
+              job_data:    job,
+            };
+            return router.replace('/job-accepted');
+          }
+        } catch { /* no active job — continue to home */ }
         router.replace('/parent-home');
       } else {
         Alert.alert('Login Failed', res.data.error || 'Please check your credentials.');

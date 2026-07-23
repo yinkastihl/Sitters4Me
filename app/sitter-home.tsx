@@ -55,6 +55,8 @@ export default function SitterHome() {
   // Increment to force re-render after returning from profile edit screen
   const [profileVersion, setProfileVersion] = useState(0);
   const [hasActiveJob,   setHasActiveJob]   = useState(false);
+  const [unreadCount,    setUnreadCount]    = useState(0);
+  const chatPollRef                         = useRef<any>(null);
 
   // Re-read global.currentUser every time this screen gains focus
   // (picks up rate/distance changes made in profile edit screen)
@@ -162,6 +164,28 @@ export default function SitterHome() {
     }
     return () => clearInterval(pollRef.current);
   }, [isOnline]);
+
+  // Poll for unread chat messages while an active job exists
+  useEffect(() => {
+    if (!hasActiveJob) {
+      setUnreadCount(0);
+      clearInterval(chatPollRef.current);
+      return;
+    }
+    const jobId = (global as any).activeJob?.job_id || (global as any).activeJob?.id;
+    if (!jobId) return;
+    const poll = async () => {
+      try {
+        const res = await axios.post(`${JOBS_API}?action=get_unread_count`, {
+          job_id: jobId, viewer_type: 'sitter',
+        });
+        if (res.data?.success) setUnreadCount(res.data.data?.unread || 0);
+      } catch {}
+    };
+    poll();
+    chatPollRef.current = setInterval(poll, 5000);
+    return () => clearInterval(chatPollRef.current);
+  }, [hasActiveJob]);
 
   // ── Poll API for incoming jobs — only shows popup when parent presses Request Now ──
   const checkForJobs = async () => {
@@ -532,6 +556,11 @@ export default function SitterHome() {
         >
           <View style={s.activeJobBannerDot} />
           <Text style={s.activeJobBannerText}>⏱ Job in progress · Tap to return</Text>
+          {unreadCount > 0 && (
+            <View style={s.chatBadge}>
+              <Text style={s.chatBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+            </View>
+          )}
           <Text style={s.activeJobBannerChevron}>›</Text>
         </TouchableOpacity>
       )}
@@ -740,15 +769,17 @@ export default function SitterHome() {
                 const ageStr = ages.length
                   ? ages.map((a: number) => a === 0 ? 'Infant' : `${a}yr`).join(', ')
                   : null;
+                const distMi = incomingJob.distance_mi ? parseFloat(incomingJob.distance_mi) : null;
                 const rows = [
                   ['Parent',    incomingJob.parent_name || 'Parent'],
+                  distMi !== null ? ['Distance', `${distMi.toFixed(1)} mi away`] : null,
                   ['Date',      dateStr],
                   ['Time',      timeStr],
                   ['Duration',  `${incomingJob.duration_hours || 2} hrs`],
                   ['Children',  ageStr ? `${kidCount} (${ageStr})` : `${kidCount}`],
                   ['Location',  `${incomingJob.city || ''}, ${incomingJob.state || ''}`],
                   ['Your rate', `$${incomingJob.rate}/hr`],
-                ];
+                ].filter(Boolean) as [string, string][];
                 return (
                   <View style={s.jobDetails}>
                     {rows.map(([label, val]) => (
@@ -803,12 +834,14 @@ export default function SitterHome() {
                     ? `${kidCount} child${kidCount !== 1 ? 'ren' : ''} · ${agesStr}`
                     : `${kidCount} child${kidCount !== 1 ? 'ren' : ''}`;
                   const parentRating = parseFloat(incomingJob.parent_avg_rating || 0);
+                  const distMi = incomingJob.distance_mi ? parseFloat(incomingJob.distance_mi) : null;
                   return [
                     ['Parent',   incomingJob.parent_name || 'Parent'],
+                    distMi !== null ? ['Distance', `${distMi.toFixed(1)} mi away`] : null,
                     ['Location', `${incomingJob.city || ''}, ${incomingJob.state || ''}`],
                     ['Children', childrenValue],
                     ['Rate',     `$${incomingJob.rate || user.minrate || 15}/hr`],
-                  ].map(([label, value]) => (
+                  ].filter(Boolean).map(([label, value]) => (
                     <View key={label} style={s.detailRow}>
                       <Text style={s.detailLabel}>{label}</Text>
                       <Text style={[
@@ -872,6 +905,8 @@ const s = StyleSheet.create({
   activeJobBannerDot:     { width: 9, height: 9, borderRadius: 5, backgroundColor: '#FFFFFF', opacity: 0.9 },
   activeJobBannerText:    { flex: 1, fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
   activeJobBannerChevron: { fontSize: 22, color: 'rgba(255,255,255,0.8)', fontWeight: '300' },
+  chatBadge:              { minWidth: 22, height: 22, borderRadius: 11, backgroundColor: '#EF4444', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
+  chatBadgeText:          { fontSize: 12, fontWeight: '800', color: '#FFFFFF' },
   scroll:          { flex: 1, marginTop: -16 },
   content:         { paddingTop: 24, paddingHorizontal: 16, paddingBottom: 48, gap: 16 },
   onlineCard:      { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 18, borderWidth: 1.5, borderColor: 'rgba(15,17,23,0.1)', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 8, elevation: 3 },

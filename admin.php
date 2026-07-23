@@ -292,6 +292,56 @@ $isAuthed = !empty($_SESSION['admin_auth']);
     <div class="pagination" id="pagination"></div>
   </div>
 
+  <!-- SITTERS PANEL -->
+  <div class="panel" style="margin-top:24px">
+    <div class="panel-header">
+      <h2>👩‍👧 Sitters</h2>
+      <div class="controls">
+        <input type="text" id="searchSitter" placeholder="Name / email / phone" style="width:180px">
+        <button class="btn btn-primary" onclick="loadSitters(1)">🔍 Search</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th><th>Name</th><th>Email</th><th>City</th>
+            <th>Rate</th><th>BG Check</th><th>Jobs</th><th>Rating</th><th>Status</th><th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="sittersBody">
+          <tr><td colspan="10" class="empty"><div class="icon">⏳</div>Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="pagination" id="sitterPagination"></div>
+  </div>
+
+  <!-- PARENTS PANEL -->
+  <div class="panel" style="margin-top:24px">
+    <div class="panel-header">
+      <h2>👨‍👩‍👧 Parents</h2>
+      <div class="controls">
+        <input type="text" id="searchParent" placeholder="Name / email / phone" style="width:180px">
+        <button class="btn btn-primary" onclick="loadParents(1)">🔍 Search</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th><th>Name</th><th>Email</th><th>City</th>
+            <th>Total Jobs</th><th>Completed</th><th>Cancels</th><th>Status</th><th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="parentsBody">
+          <tr><td colspan="9" class="empty"><div class="icon">⏳</div>Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="pagination" id="parentPagination"></div>
+  </div>
+
 </div><!-- /main -->
 
 <!-- ── EDIT MODAL ── -->
@@ -356,6 +406,67 @@ $isAuthed = !empty($_SESSION['admin_auth']);
   </div>
 </div>
 
+<!-- ── SITTER EDIT MODAL ── -->
+<div class="modal-backdrop" id="sitterModal">
+  <div class="modal">
+    <h3>✏️ Edit Sitter <span id="sitterModalName"></span>
+      <button class="modal-close" onclick="closeModal('sitterModal')">×</button>
+    </h3>
+    <div class="form-group">
+      <label>Background Check Status</label>
+      <select id="sitterCheckrStatus">
+        <option value="pending">Pending</option>
+        <option value="clear">Clear ✓</option>
+        <option value="consider">Consider (Manual Review)</option>
+        <option value="suspended">Suspended</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Account Status</label>
+      <select id="sitterIsActive">
+        <option value="1">Active</option>
+        <option value="0">Suspended</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Admin Notes (internal only)</label>
+      <textarea id="sitterAdminNotes" placeholder="Notes visible only to admin…"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('sitterModal')" style="background:#f3f4f6">Cancel</button>
+      <button class="btn btn-primary" onclick="saveSitterEdit()">💾 Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── PARENT EDIT MODAL ── -->
+<div class="modal-backdrop" id="parentModal">
+  <div class="modal">
+    <h3>✏️ Edit Parent <span id="parentModalName"></span>
+      <button class="modal-close" onclick="closeModal('parentModal')">×</button>
+    </h3>
+    <div class="form-group">
+      <label>Account Status</label>
+      <select id="parentIsActive">
+        <option value="1">Active</option>
+        <option value="0">Suspended</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Reset Cancel Count (current: <span id="parentCancelCount">0</span>)</label>
+      <input type="number" id="parentCancelCountInput" min="0" max="99">
+    </div>
+    <div class="form-group">
+      <label>Admin Notes (internal only)</label>
+      <textarea id="parentAdminNotes" placeholder="Notes visible only to admin…"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('parentModal')" style="background:#f3f4f6">Cancel</button>
+      <button class="btn btn-primary" onclick="saveParentEdit()">💾 Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- TOAST -->
 <div class="toast" id="toast"></div>
 
@@ -366,17 +477,29 @@ const ADMIN_KEY= '<?= ADMIN_KEY ?>';
 let currentPage = 1;
 let editingJobId = null;
 let cancellingJobId = null;
+let editingSitterId = null;
+let editingParentId = null;
+let currentSitterPage = 1;
+let currentParentPage = 1;
 
 // ── INIT ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   loadStats();
   loadJobs(1);
+  loadSitters(1);
+  loadParents(1);
 
   // Search on Enter
   document.getElementById('searchId').addEventListener('keydown', e => {
     if (e.key === 'Enter') loadJobs(1);
   });
   document.getElementById('filterStatus').addEventListener('change', () => loadJobs(1));
+  document.getElementById('searchSitter').addEventListener('keydown', e => {
+    if (e.key === 'Enter') loadSitters(1);
+  });
+  document.getElementById('searchParent').addEventListener('keydown', e => {
+    if (e.key === 'Enter') loadParents(1);
+  });
 });
 
 // ── API HELPER ───────────────────────────────────────────────
@@ -622,6 +745,151 @@ function escHtml(s) {
 
 // ── AUTO REFRESH STATS ───────────────────────────────────────
 setInterval(loadStats, 60_000);
+
+// ── SITTERS ──────────────────────────────────────────────────
+async function loadSitters(page = 1) {
+  currentSitterPage = page;
+  const search = document.getElementById('searchSitter').value.trim();
+  document.getElementById('sittersBody').innerHTML =
+    '<tr><td colspan="10" class="empty"><div class="icon">⏳</div>Loading…</td></tr>';
+  try {
+    const d = await api('admin_list_sitters', { search, page });
+    if (!d.success) { showToast(d.error || 'Failed to load sitters', 'error'); return; }
+    const { sitters, total_pages } = d.data;
+    if (!sitters || !sitters.length) {
+      document.getElementById('sittersBody').innerHTML =
+        '<tr><td colspan="10" class="empty"><div class="icon">👩‍👧</div>No sitters found</td></tr>';
+    } else {
+      const checkrBadge = s => {
+        const map = { clear:'green', consider:'orange', pending:'', suspended:'red' };
+        const col = map[s] || '';
+        return `<span class="badge${col ? ' badge-' + col : ''}">${s || 'pending'}</span>`;
+      };
+      document.getElementById('sittersBody').innerHTML = sitters.map(s => `
+        <tr>
+          <td><strong>#${s.id}</strong></td>
+          <td>${escHtml(s.fname+' '+s.lname)}<br><small style="color:var(--muted)">${s.online == 1 ? '🟢 Online' : '⚫ Offline'}</small></td>
+          <td>${escHtml(s.email)}</td>
+          <td>${escHtml(s.city||'')}${s.state?', '+s.state:''}</td>
+          <td>$${parseFloat(s.minrate||0).toFixed(0)}/hr</td>
+          <td>${checkrBadge(s.checkr_status)}</td>
+          <td>${s.completed_jobs}</td>
+          <td>${parseFloat(s.avg_rating||0).toFixed(1)} ⭐ (${s.review_count})</td>
+          <td><span class="badge ${s.is_active==1?'badge-complete':'badge-cancelled'}">${s.is_active==1?'Active':'Suspended'}</span></td>
+          <td><button class="btn btn-primary btn-sm" onclick="openSitterEdit(${JSON.stringify(s).replace(/"/g,'&quot;')})">✏️ Edit</button></td>
+        </tr>`).join('');
+    }
+    renderSitterPagination(total_pages, page);
+  } catch(e) { showToast('Network error', 'error'); }
+}
+
+function renderSitterPagination(totalPages, current) {
+  if (totalPages <= 1) { document.getElementById('sitterPagination').innerHTML = ''; return; }
+  let html = `<button class="page-btn" onclick="loadSitters(${current-1})" ${current===1?'disabled':''}>←</button>`;
+  for (let i = 1; i <= totalPages; i++) {
+    html += `<button class="page-btn ${i===current?'active':''}" onclick="loadSitters(${i})">${i}</button>`;
+  }
+  html += `<button class="page-btn" onclick="loadSitters(${current+1})" ${current===totalPages?'disabled':''}>→</button>`;
+  document.getElementById('sitterPagination').innerHTML = html;
+}
+
+function openSitterEdit(s) {
+  editingSitterId = s.id;
+  document.getElementById('sitterModalName').textContent = `— ${s.fname} ${s.lname}`;
+  document.getElementById('sitterCheckrStatus').value = s.checkr_status || 'pending';
+  document.getElementById('sitterIsActive').value = s.is_active == 1 ? '1' : '0';
+  document.getElementById('sitterAdminNotes').value = s.admin_notes || '';
+  document.getElementById('sitterModal').classList.add('open');
+}
+
+async function saveSitterEdit() {
+  if (!editingSitterId) return;
+  try {
+    const d = await api('admin_update_sitter', {
+      sitter_id:      editingSitterId,
+      checkr_status:  document.getElementById('sitterCheckrStatus').value,
+      is_active:      parseInt(document.getElementById('sitterIsActive').value),
+      admin_notes:    document.getElementById('sitterAdminNotes').value,
+    });
+    if (d.success) {
+      showToast('Sitter updated ✓');
+      closeModal('sitterModal');
+      loadSitters(currentSitterPage);
+    } else {
+      showToast(d.error || 'Update failed', 'error');
+    }
+  } catch { showToast('Network error', 'error'); }
+}
+
+// ── PARENTS ──────────────────────────────────────────────────
+async function loadParents(page = 1) {
+  currentParentPage = page;
+  const search = document.getElementById('searchParent').value.trim();
+  document.getElementById('parentsBody').innerHTML =
+    '<tr><td colspan="9" class="empty"><div class="icon">⏳</div>Loading…</td></tr>';
+  try {
+    const d = await api('admin_list_parents', { search, page });
+    if (!d.success) { showToast(d.error || 'Failed to load parents', 'error'); return; }
+    const { parents, total_pages } = d.data;
+    if (!parents || !parents.length) {
+      document.getElementById('parentsBody').innerHTML =
+        '<tr><td colspan="9" class="empty"><div class="icon">👨‍👩‍👧</div>No parents found</td></tr>';
+    } else {
+      document.getElementById('parentsBody').innerHTML = parents.map(p => `
+        <tr>
+          <td><strong>#${p.id}</strong></td>
+          <td>${escHtml(p.fname+' '+p.lname)}</td>
+          <td>${escHtml(p.email)}</td>
+          <td>${escHtml(p.city||'')}${p.state?', '+p.state:''}</td>
+          <td>${p.total_jobs}</td>
+          <td>${p.completed_jobs}</td>
+          <td>${p.cancel_count} ${p.cancel_count >= 3 ? '⚠️' : ''}</td>
+          <td><span class="badge ${p.is_active==1?'badge-complete':'badge-cancelled'}">${p.is_active==1?'Active':'Suspended'}</span></td>
+          <td><button class="btn btn-primary btn-sm" onclick="openParentEdit(${JSON.stringify(p).replace(/"/g,'&quot;')})">✏️ Edit</button></td>
+        </tr>`).join('');
+    }
+    renderParentPagination(total_pages, page);
+  } catch(e) { showToast('Network error', 'error'); }
+}
+
+function renderParentPagination(totalPages, current) {
+  if (totalPages <= 1) { document.getElementById('parentPagination').innerHTML = ''; return; }
+  let html = `<button class="page-btn" onclick="loadParents(${current-1})" ${current===1?'disabled':''}>←</button>`;
+  for (let i = 1; i <= totalPages; i++) {
+    html += `<button class="page-btn ${i===current?'active':''}" onclick="loadParents(${i})">${i}</button>`;
+  }
+  html += `<button class="page-btn" onclick="loadParents(${current+1})" ${current===totalPages?'disabled':''}>→</button>`;
+  document.getElementById('parentPagination').innerHTML = html;
+}
+
+function openParentEdit(p) {
+  editingParentId = p.id;
+  document.getElementById('parentModalName').textContent = `— ${p.fname} ${p.lname}`;
+  document.getElementById('parentIsActive').value = p.is_active == 1 ? '1' : '0';
+  document.getElementById('parentCancelCount').textContent = p.cancel_count;
+  document.getElementById('parentCancelCountInput').value = p.cancel_count;
+  document.getElementById('parentAdminNotes').value = p.admin_notes || '';
+  document.getElementById('parentModal').classList.add('open');
+}
+
+async function saveParentEdit() {
+  if (!editingParentId) return;
+  try {
+    const d = await api('admin_update_parent', {
+      parent_id:    editingParentId,
+      is_active:    parseInt(document.getElementById('parentIsActive').value),
+      cancel_count: parseInt(document.getElementById('parentCancelCountInput').value) || 0,
+      admin_notes:  document.getElementById('parentAdminNotes').value,
+    });
+    if (d.success) {
+      showToast('Parent updated ✓');
+      closeModal('parentModal');
+      loadParents(currentParentPage);
+    } else {
+      showToast(d.error || 'Update failed', 'error');
+    }
+  } catch { showToast('Network error', 'error'); }
+}
 </script>
 
 <?php endif; ?>

@@ -1291,7 +1291,8 @@ switch ($action) {
                    COALESCE(s.additional_child_rate, 0) AS additional_child_rate,
                    CONCAT(p.fname, ' ', p.lname) AS parent_name,
                    COALESCE(p.avg_rating, 0) AS parent_avg_rating,
-                   jr.id AS routing_id
+                   jr.id AS routing_id,
+                   ROUND(jr.distance_mi, 1) AS distance_mi
             FROM job_routing jr
             INNER JOIN jobs    j ON j.id = jr.job_id
             INNER JOIN parents p ON p.id = j.parent_id
@@ -1322,7 +1323,8 @@ switch ($action) {
                    CONCAT(p.fname, ' ', p.lname) AS parent_name,
                    p.cellphone AS parent_phone,
                    COALESCE(p.avg_rating, 0) AS parent_avg_rating,
-                   jr.id AS routing_id
+                   jr.id AS routing_id,
+                   ROUND(jr.distance_mi, 1) AS distance_mi
             FROM job_routing jr
             INNER JOIN jobs    j ON j.id = jr.job_id
             INNER JOIN parents p ON p.id = j.parent_id
@@ -1407,6 +1409,27 @@ switch ($action) {
             ]);
         }, $jobs);
         ok($jobs, count($jobs).' upcoming job(s)');
+
+    // ── GET PARENT ACTIVE JOB ────────────────────────────────
+    case 'get_parent_active_job':
+        $parent_id = (int)($body['parent_id'] ?? 0);
+        if (!$parent_id) err('Missing parent_id');
+        $job = row("
+            SELECT j.id, j.status, j.sitter_id, j.kids, j.charge_amt,
+                   j.start_time, j.accept_time,
+                   s.fname AS sitter_fname, s.lname AS sitter_lname,
+                   s.minrate AS rate,
+                   COALESCE(s.additional_child_rate, 0) AS additional_child_rate
+            FROM jobs j
+            LEFT JOIN sitters s ON s.id = j.sitter_id
+            WHERE j.parent_id = ?
+              AND j.status IN ('Open','Sitter hired','Sitter offered','Sitter arrived','In progress')
+            ORDER BY j.id DESC
+            LIMIT 1
+        ", [$parent_id]);
+        if (!$job) err('No active job found');
+        $job['sitter_name'] = trim(($job['sitter_fname']??'').' '.($job['sitter_lname']??''));
+        ok($job, 'Active job found');
 
     // ── GET SITTER ACTIVE JOB ────────────────────────────────
     case 'get_sitter_active_job':

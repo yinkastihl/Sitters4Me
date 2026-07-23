@@ -47,6 +47,8 @@ export default function ParentHome() {
   const activeJobIdRef                      = useRef<number>(0);
   const [profilePhoto, setProfilePhoto]     = useState<string | null>(null);
   const [hasActiveJob, setHasActiveJob]     = useState(false);
+  const [unreadCount, setUnreadCount]       = useState(0);
+  const chatPollRef                         = useRef<any>(null);
 
   // Re-check for an active job every time this screen gains focus
   useFocusEffect(
@@ -134,6 +136,28 @@ export default function ParentHome() {
       clearInterval(upcomingPollRef.current);
     };
   }, []);
+
+  // Poll for unread chat messages while an active job exists
+  useEffect(() => {
+    if (!hasActiveJob) {
+      setUnreadCount(0);
+      clearInterval(chatPollRef.current);
+      return;
+    }
+    const jobId = (global as any).activeJob?.job_id || (global as any).activeJob?.id;
+    if (!jobId) return;
+    const poll = async () => {
+      try {
+        const res = await axios.post(`${JOBS_API}?action=get_unread_count`, {
+          job_id: jobId, viewer_type: 'parent',
+        });
+        if (res.data?.success) setUnreadCount(res.data.data?.unread || 0);
+      } catch {}
+    };
+    poll();
+    chatPollRef.current = setInterval(poll, 5000);
+    return () => clearInterval(chatPollRef.current);
+  }, [hasActiveJob]);
 
   const getLocation = async () => {
     try {
@@ -637,6 +661,11 @@ export default function ParentHome() {
         >
           <View style={s.activeJobBannerDot} />
           <Text style={s.activeJobBannerText}>🍼 Job in progress · Tap to return</Text>
+          {unreadCount > 0 && (
+            <View style={s.chatBadge}>
+              <Text style={s.chatBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+            </View>
+          )}
           <Text style={s.activeJobBannerChevron}>›</Text>
         </TouchableOpacity>
       )}
@@ -727,7 +756,14 @@ export default function ParentHome() {
                   activeOpacity={0.85}
                 >
                   <LinearGradient colors={['#16A34A', '#15803D']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.activeJobDrawerBtnGrad}>
-                    <Text style={s.activeJobDrawerBtnText}>Return to Active Job  ›</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <Text style={s.activeJobDrawerBtnText}>Return to Active Job  ›</Text>
+                      {unreadCount > 0 && (
+                        <View style={s.chatBadge}>
+                          <Text style={s.chatBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+                        </View>
+                      )}
+                    </View>
                   </LinearGradient>
                 </TouchableOpacity>
                 <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
@@ -1334,6 +1370,8 @@ const s = StyleSheet.create({
   activeJobBannerDot:    { width: 9, height: 9, borderRadius: 5, backgroundColor: '#FFFFFF', opacity: 0.9 },
   activeJobBannerText:   { flex: 1, fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
   activeJobBannerChevron:{ fontSize: 22, color: 'rgba(255,255,255,0.8)', fontWeight: '300' },
+  chatBadge:             { minWidth: 22, height: 22, borderRadius: 11, backgroundColor: '#EF4444', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
+  chatBadgeText:         { fontSize: 12, fontWeight: '800', color: '#FFFFFF' },
   mapWrap:           { flex: 1, position: 'relative' },
   mapLoading:        { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: '#E8F4F8' },
   mapLoadingText:    { fontSize: 14, color: '#5A5F72' },

@@ -76,7 +76,15 @@ export default function SitterLogin() {
         if (u.status === 'pending' || u.status === 'inactive') {
           return router.replace('/sitter-pending');
         }
-        // Active sitter - go to home regardless of bgcheck
+        // Check for an in-progress job — restore to active-job if found
+        try {
+          const aj = await axios.post(`${JOBS_API}?action=get_sitter_active_job`, { sitter_id: u.id });
+          if (aj.data?.success && aj.data?.data?.id) {
+            const job = aj.data.data;
+            (global as any).activeJob = { job_id: job.id, id: job.id, ...job };
+            return router.replace('/active-job');
+          }
+        } catch { /* no active job — continue to home */ }
         router.replace('/sitter-home');
       } else {
         Alert.alert('Login Failed', res.data.error || 'Please check your credentials.');
