@@ -1974,6 +1974,7 @@ switch ($action) {
         $jobs = rows("
             SELECT j.id, j.status, j.kids, j.children_ages,
                    j.address, j.city, j.state,
+                   j.sitter_id,
                    j.post_time, j.start_time, j.stop_time,
                    j.charge_amt, j.scheduled_time,
                    s.fname AS sitter_fname, s.lname AS sitter_lname,
@@ -1987,10 +1988,13 @@ switch ($action) {
                        THEN GREATEST(0, TIMESTAMPDIFF(SECOND, j.start_time, NOW()))
                      ELSE 0
                    END AS elapsed_seconds,
-                   py.amount_usd, py.platform_fee_usd, py.status AS payment_status
+                   py.amount_usd, py.platform_fee_usd, py.status AS payment_status,
+                   CASE WHEN r.id IS NOT NULL THEN 1 ELSE 0 END AS has_review,
+                   COALESCE(r.rating, 0) AS my_rating
             FROM jobs j
             LEFT JOIN sitters  s  ON s.id  = j.sitter_id
             LEFT JOIN payments py ON py.job_id = j.id
+            LEFT JOIN reviews  r  ON r.job_id = j.id AND r.parent_id = j.parent_id
             WHERE j.parent_id = ?
               AND j.status NOT IN ('Open','Closed')
             ORDER BY j.id DESC
@@ -2006,6 +2010,9 @@ switch ($action) {
             return array_merge($j, [
                 'children_ages'  => $ages,
                 'sitter_name'    => trim(($j['sitter_fname']??'').' '.($j['sitter_lname']??'')),
+                'sitter_id'      => (int)($j['sitter_id'] ?? 0),
+                'has_review'     => (int)($j['has_review'] ?? 0),
+                'my_rating'      => (int)($j['my_rating']  ?? 0),
                 'gross'          => round($gross, 2),
                 'fee'            => round($fee, 2),
                 'hours'          => $hours,

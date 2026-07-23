@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
   StatusBar, ActivityIndicator, RefreshControl, Alert,
+  Modal, TextInput, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -69,6 +70,13 @@ export default function ParentHistory() {
   const [refreshing, setRefreshing] = useState(false);
   const [loadError,  setLoadError]  = useState<string | null>(null);
 
+  // ── Rating modal state ──────────────────────────────────────────
+  const [ratingJob,    setRatingJob]    = useState<any>(null); // job being rated
+  const [stars,        setStars]        = useState(5);
+  const [reviewText,   setReviewText]   = useState('');
+  const [submitting,   setSubmitting]   = useState(false);
+  const [ratingError,  setRatingError]  = useState<string | null>(null);
+
   const parentId = user.id || (user as any).u_id || 0;
 
   const cancelScheduled = (jobId: number) => {
@@ -120,6 +128,39 @@ export default function ParentHistory() {
   }, [parentId]);
 
   useEffect(() => { loadHistory(); }, []);
+
+  const openRating = (job: any) => {
+    setRatingJob(job);
+    setStars(job.my_rating || 5);
+    setReviewText('');
+    setRatingError(null);
+  };
+
+  const submitRating = async () => {
+    if (!ratingJob) return;
+    setSubmitting(true);
+    setRatingError(null);
+    try {
+      const res = await axios.post(`${JOBS_API}?action=submit_review`, {
+        job_id:      ratingJob.id,
+        parent_id:   parentId,
+        sitter_id:   ratingJob.sitter_id,
+        rating:      stars,
+        review_text: reviewText.trim(),
+      });
+      if (res.data?.success) {
+        // Update local state so the card immediately reflects the new rating
+        setJobs(prev => prev.map(j =>
+          j.id === ratingJob.id ? { ...j, has_review: 1, my_rating: stars } : j
+        ));
+        setRatingJob(null);
+      } else {
+        setRatingError(res.data?.error || 'Could not submit. Please try again.');
+      }
+    } catch {
+      setRatingError('Network error — please try again.');
+    } finally { setSubmitting(false); }
+  };
 
   // Aggregate stats
   const completed   = jobs.filter(j => j.status === 'Complete');
@@ -309,31 +350,112 @@ export default function ParentHistory() {
                   </View>
                 )}
 
-                {/* Book Again — completed jobs with a known sitter */}
+                {/* Rating row + Book Again — completed jobs with a sitter */}
                 {job.status === 'Complete' && hasSitter && (
-                  <TouchableOpacity
-                    style={s.bookAgainBtn}
-                    activeOpacity={0.85}
-                    onPress={() => {
-                      (global as any).bookAgainSitter      = { id: job.sitter_id, fname: job.sitter_fname, lname: job.sitter_lname };
-                      (global as any)._bookAgainSitterId   = job.sitter_id || null;
-                      router.replace('/parent-home');
-                    }}
-                  >
-                    <LinearGradient
-                      colors={['#C93488', '#9B5BAB']}
-                      start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-                      style={s.bookAgainGrad}
+                  <View style={s.actionRow}>
+                    {/* Rate / Already rated */}
+                    {job.has_review ? (
+                      <View style={s.ratedBadge}>
+                        <View style={{ flexDirection: 'row', gap: 2 }}>
+                          {[1,2,3,4,5].map(i => (
+                            <Text key={i} style={{ fontSize: 13, color: i <= job.my_rating ? '#F4A800' : '#D9D6CE' }}>★</Text>
+                          ))}
+                        </View>
+                        <Text style={s.ratedText}>You rated</Text>
+                      </View>
+                    ) : (
+                      <TouchableOpacity style={s.rateBtn} onPress={() => openRating(job)} activeOpacity={0.85}>
+                        <Text style={s.rateBtnText}>⭐ Rate Sitter</Text>
+                      </TouchableOpacity>
+                    )}
+
+                    {/* Book Again */}
+                    <TouchableOpacity
+                      style={s.bookAgainBtn}
+                      activeOpacity={0.85}
+                      onPress={() => {
+                        (global as any).bookAgainSitter    = { id: job.sitter_id, fname: job.sitter_fname, lname: job.sitter_lname };
+                        (global as any)._bookAgainSitterId = job.sitter_id || null;
+                        router.replace('/parent-home');
+                      }}
                     >
-                      <Text style={s.bookAgainText}>🔁 Book {job.sitter_fname || 'Sitter'} Again</Text>
-                    </LinearGradient>
-                  </TouchableOpacity>
+                      <Text style={s.bookAgainText}>🔁 Book Again</Text>
+                    </TouchableOpacity>
+                  </View>
                 )}
               </View>
             );
           })
         )}
       </ScrollView>
+
+      {/* ── Rate Sitter modal ──────────────────────────────────── */}
+      <Modal
+        visible={!!ratingJob}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setRatingJob(null)}
+      >
+        <KeyboardAvoidingView
+          style={rm.overlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setRatingJob(null)} />
+          <View style={rm.sheet}>
+            <View style={rm.handle} />
+            <Text style={rm.title}>Rate {ratingJob?.sitter_fname || 'Your Sitter'}</Text>
+            <Text style={rm.sub}>How was your experience?</Text>
+
+            {/* Stars */}
+            <View style={rm.starsRow}>
+              {[1,2,3,4,5].map(i => (
+                <TouchableOpacity key={i} onPress={() => setStars(i)} activeOpacity={0.7}>
+                  <Text style={[rm.star, { color: i <= stars ? '#F4A800' : '#D9D6CE' }]}>★</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={rm.starLabel}>
+              {stars === 5 ? 'Excellent!' : stars === 4 ? 'Great' : stars === 3 ? 'Good' : stars === 2 ? 'Fair' : 'Poor'}
+            </Text>
+
+            {/* Review text */}
+            <TextInput
+              style={rm.input}
+              placeholder="Share what you loved (optional)…"
+              placeholderTextColor="#9B9FAE"
+              value={reviewText}
+              onChangeText={setReviewText}
+              multiline
+              numberOfLines={3}
+              maxLength={300}
+            />
+
+            {ratingError && <Text style={rm.error}>{ratingError}</Text>}
+
+            <TouchableOpacity
+              style={[rm.submitBtn, submitting && { opacity: 0.6 }]}
+              onPress={submitRating}
+              disabled={submitting}
+              activeOpacity={0.85}
+            >
+              <LinearGradient
+                colors={['#ED1E76', '#C93488', '#9B5BAB']}
+                start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                style={rm.submitGrad}
+              >
+                {submitting
+                  ? <ActivityIndicator color="#fff" />
+                  : <Text style={rm.submitText}>Submit Rating</Text>
+                }
+              </LinearGradient>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={rm.skipBtn} onPress={() => setRatingJob(null)}>
+              <Text style={rm.skipText}>Maybe later</Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -398,7 +520,31 @@ const s = StyleSheet.create({
   paidBadge:     { fontSize: 12, fontWeight: '700', color: '#1A7F6E' },
   pendingBadge:  { fontSize: 12, fontWeight: '700', color: '#F5A623' },
 
-  bookAgainBtn:  { marginHorizontal: 16, marginBottom: 16, borderRadius: 12, overflow: 'hidden' },
-  bookAgainGrad: { padding: 14, alignItems: 'center' },
-  bookAgainText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  // Action row: rate + book again side by side
+  actionRow:    { flexDirection: 'row', gap: 10, marginHorizontal: 16, marginBottom: 16 },
+  rateBtn:      { flex: 1, borderRadius: 10, borderWidth: 1.5, borderColor: '#C93488', paddingVertical: 11, alignItems: 'center' },
+  rateBtnText:  { fontSize: 14, fontWeight: '700', color: '#C93488' },
+  ratedBadge:   { flex: 1, borderRadius: 10, backgroundColor: '#FFF5FD', borderWidth: 1, borderColor: '#F2C3E8', paddingVertical: 9, alignItems: 'center', gap: 2 },
+  ratedText:    { fontSize: 10, fontWeight: '600', color: '#C93488' },
+  bookAgainBtn: { flex: 1, borderRadius: 10, backgroundColor: '#0F1117', paddingVertical: 11, alignItems: 'center' },
+  bookAgainText:{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
+});
+
+// ── Rating modal styles ─────────────────────────────────────────
+const rm = StyleSheet.create({
+  overlay:    { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' },
+  sheet:      { backgroundColor: '#FFFFFF', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 40, gap: 12 },
+  handle:     { width: 40, height: 4, borderRadius: 2, backgroundColor: '#E5E2DA', alignSelf: 'center', marginBottom: 8 },
+  title:      { fontSize: 20, fontWeight: '900', color: '#0F1117', textAlign: 'center' },
+  sub:        { fontSize: 14, color: '#5A5F72', textAlign: 'center', marginTop: -4 },
+  starsRow:   { flexDirection: 'row', justifyContent: 'center', gap: 12, marginTop: 4 },
+  star:       { fontSize: 44 },
+  starLabel:  { textAlign: 'center', fontSize: 15, fontWeight: '700', color: '#C93488', marginTop: -4 },
+  input:      { borderWidth: 1.5, borderColor: 'rgba(15,17,23,0.12)', borderRadius: 12, padding: 14, fontSize: 14, color: '#0F1117', backgroundColor: '#F5F4F0', minHeight: 80, textAlignVertical: 'top' },
+  error:      { fontSize: 13, color: '#BF3B2E', textAlign: 'center' },
+  submitBtn:  { borderRadius: 12, overflow: 'hidden' },
+  submitGrad: { padding: 16, alignItems: 'center' },
+  submitText: { color: '#FFFFFF', fontSize: 16, fontWeight: '900' },
+  skipBtn:    { alignItems: 'center', paddingVertical: 4 },
+  skipText:   { fontSize: 14, color: '#9B9FAE' },
 });
