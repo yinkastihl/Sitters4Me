@@ -790,6 +790,7 @@ export default function SitterHome() {
                   const childrenValue = agesStr
                     ? `${kidCount} child${kidCount !== 1 ? 'ren' : ''} · ${agesStr}`
                     : `${kidCount} child${kidCount !== 1 ? 'ren' : ''}`;
+                  const parentRating = parseFloat(incomingJob.parent_avg_rating || 0);
                   return [
                     ['Parent',   incomingJob.parent_name || 'Parent'],
                     ['Location', `${incomingJob.city || ''}, ${incomingJob.state || ''}`],
@@ -804,7 +805,21 @@ export default function SitterHome() {
                         label === 'Children' && { flexShrink: 1, textAlign: 'right', maxWidth: '65%' },
                       ]}>{value}</Text>
                     </View>
-                  ));
+                  )).concat(
+                    parentRating > 0
+                      ? [(
+                          <View key="rating" style={s.detailRow}>
+                            <Text style={s.detailLabel}>Parent Rating</Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                              {[1,2,3,4,5].map(i => (
+                                <Text key={i} style={{ fontSize: 14, color: i <= Math.round(parentRating) ? '#F4A800' : '#D9D6CE' }}>★</Text>
+                              ))}
+                              <Text style={[s.detailValue, { marginLeft: 2 }]}>{parentRating.toFixed(1)}</Text>
+                            </View>
+                          </View>
+                        )]
+                      : []
+                  );
                 })()}
               </View>
               <View style={s.modalActions}>

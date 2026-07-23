@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
   StatusBar, Alert, Linking, Image, ActivityIndicator, Vibration,
+  Modal, TextInput, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -32,6 +33,13 @@ export default function ActiveJob() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [childProfiles, setChildProfiles]   = useState<any[]>([]);
   const [showChildInfo, setShowChildInfo]   = useState(false);
+
+  // Two-way rating: sitter rates parent after job
+  const [showRateParent, setShowRateParent] = useState(false);
+  const [parentStars,    setParentStars]    = useState(5);
+  const [parentNote,     setParentNote]     = useState('');
+  const [ratingDone,     setRatingDone]     = useState(false);
+  const [submittingRate, setSubmittingRate] = useState(false);
 
   const user = global.currentUser || {};
 
@@ -318,7 +326,7 @@ export default function ActiveJob() {
           `Earnings:  $${d.sitter_payout ?? earnings}\n` +
           `Charged:   $${d.amount_charged} to parent\n\n` +
           `Your payout will be deposited within 2 business days.`,
-          [{ text: 'Great, thanks!' }]
+          [{ text: 'Rate Parent ⭐', onPress: () => setShowRateParent(true) }]
         );
       } else {
         // Payment failed — let sitter know, parent will be contacted
@@ -327,14 +335,20 @@ export default function ActiveJob() {
           `Duration: ${fmt(elapsed)}\nEstimated Earnings: $${earnings}\n\n` +
           `We could not charge the parent automatically: ${res.data?.error || 'Unknown error'}.\n\n` +
           `Our team will follow up with the parent directly.`,
-          [{ text: 'OK' }]
+          [
+            { text: 'Skip', style: 'cancel' },
+            { text: 'Rate Parent ⭐', onPress: () => setShowRateParent(true) },
+          ]
         );
       }
     } catch {
       Alert.alert(
         'Job Complete',
         `Duration: ${fmt(elapsed)}\nEarnings: $${earnings}\n\nPayment will be processed shortly.`,
-        [{ text: 'OK' }]
+        [
+          { text: 'Skip', style: 'cancel' },
+          { text: 'Rate Parent ⭐', onPress: () => setShowRateParent(true) },
+        ]
       );
     }
   };
@@ -635,9 +649,119 @@ export default function ActiveJob() {
           </>
         )}
       </ScrollView>
+
+      {/* ── RATE PARENT MODAL ───────────────────────────────────── */}
+      <Modal visible={showRateParent} transparent animationType="slide" onRequestClose={() => setShowRateParent(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+          <TouchableOpacity style={rm.overlay} activeOpacity={1} onPress={() => !submittingRate && setShowRateParent(false)}>
+            <TouchableOpacity activeOpacity={1} style={rm.sheet} onPress={() => {}}>
+              {ratingDone ? (
+                <View style={rm.doneBox}>
+                  <Text style={rm.doneIcon}>⭐</Text>
+                  <Text style={rm.doneTitle}>Rating Submitted!</Text>
+                  <Text style={rm.doneSub}>Thank you for keeping our community great.</Text>
+                  <TouchableOpacity style={rm.doneBtn} onPress={() => { setShowRateParent(false); router.replace('/sitter-home'); }}>
+                    <Text style={rm.doneBtnText}>Back to Home</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <>
+                  <View style={rm.handle} />
+                  <Text style={rm.title}>Rate This Parent</Text>
+                  <Text style={rm.sub}>
+                    How was {job?.parent_name?.split(' ')[0] || 'the parent'} to work with?
+                  </Text>
+
+                  {/* Star row */}
+                  <View style={rm.stars}>
+                    {[1, 2, 3, 4, 5].map(i => (
+                      <TouchableOpacity key={i} onPress={() => setParentStars(i)} activeOpacity={0.7}>
+                        <Text style={[rm.star, i <= parentStars && rm.starOn]}>★</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <Text style={rm.starLabel}>
+                    {parentStars === 5 ? 'Excellent parent 🎉'
+                     : parentStars === 4 ? 'Good parent 👍'
+                     : parentStars === 3 ? 'Average'
+                     : parentStars === 2 ? 'Below average'
+                     : 'Poor experience'}
+                  </Text>
+
+                  <TextInput
+                    style={rm.noteInput}
+                    value={parentNote}
+                    onChangeText={setParentNote}
+                    placeholder="Optional note (e.g. 'Kids were well-prepared')"
+                    placeholderTextColor="#9B9FAE"
+                    multiline
+                    maxLength={200}
+                  />
+
+                  <TouchableOpacity
+                    style={[rm.submitBtn, submittingRate && { opacity: 0.7 }]}
+                    activeOpacity={0.85}
+                    disabled={submittingRate}
+                    onPress={async () => {
+                      setSubmittingRate(true);
+                      try {
+                        const jobId    = job?.id || job?.job_id || jobIdRef.current;
+                        const parentId = job?.parent_id || job?.job_data?.parent_id;
+                        await axios.post(`${JOBS_API}?action=rate_parent`, {
+                          job_id:    jobId,
+                          sitter_id: user.id || (user as any).u_id,
+                          parent_id: parentId,
+                          rating:    parentStars,
+                          note:      parentNote.trim(),
+                        });
+                      } catch {}
+                      setSubmittingRate(false);
+                      setRatingDone(true);
+                    }}
+                  >
+                    <LinearGradient colors={['#ED1E76', '#C93488']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={rm.submitGrad}>
+                      {submittingRate
+                        ? <ActivityIndicator color="#fff" />
+                        : <Text style={rm.submitText}>Submit Rating</Text>
+                      }
+                    </LinearGradient>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity onPress={() => { setShowRateParent(false); router.replace('/sitter-home'); }} style={{ marginTop: 10, alignItems: 'center' }}>
+                    <Text style={{ fontSize: 14, color: '#9B9FAE' }}>Skip</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </KeyboardAvoidingView>
+      </Modal>
+
     </SafeAreaView>
   );
 }
+
+const rm = StyleSheet.create({
+  overlay:     { flex: 1, backgroundColor: 'rgba(15,17,23,0.6)', justifyContent: 'flex-end' },
+  sheet:       { backgroundColor: '#FFFFFF', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 40 },
+  handle:      { width: 36, height: 4, backgroundColor: '#EEECE7', borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
+  title:       { fontSize: 22, fontWeight: '900', color: '#0F1117', textAlign: 'center' },
+  sub:         { fontSize: 14, color: '#5A5F72', textAlign: 'center', marginTop: 6, marginBottom: 20 },
+  stars:       { flexDirection: 'row', justifyContent: 'center', gap: 10, marginBottom: 8 },
+  star:        { fontSize: 44, color: '#D9D6CE' },
+  starOn:      { color: '#F4A800' },
+  starLabel:   { fontSize: 15, fontWeight: '700', color: '#0F1117', textAlign: 'center', marginBottom: 16 },
+  noteInput:   { backgroundColor: '#F5F4F0', borderRadius: 12, borderWidth: 1.5, borderColor: 'rgba(15,17,23,0.1)', padding: 14, fontSize: 14, color: '#0F1117', minHeight: 80, textAlignVertical: 'top', marginBottom: 16 },
+  submitBtn:   { borderRadius: 14, overflow: 'hidden' },
+  submitGrad:  { padding: 16, alignItems: 'center' },
+  submitText:  { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
+  doneBox:     { alignItems: 'center', paddingVertical: 20, gap: 10 },
+  doneIcon:    { fontSize: 52 },
+  doneTitle:   { fontSize: 22, fontWeight: '900', color: '#0F1117' },
+  doneSub:     { fontSize: 14, color: '#5A5F72', textAlign: 'center' },
+  doneBtn:     { backgroundColor: '#F5F4F0', borderRadius: 12, paddingVertical: 14, paddingHorizontal: 32, marginTop: 8 },
+  doneBtnText: { fontSize: 15, fontWeight: '700', color: '#0F1117' },
+});
 
 const s = StyleSheet.create({
   container:      { flex: 1, backgroundColor: '#F5F4F0' },

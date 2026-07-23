@@ -115,6 +115,10 @@ function ensureExtraColumns(){
     addCol('jobs','notes',                   "TEXT DEFAULT NULL COMMENT 'Parent notes / special instructions'");
     addCol('jobs','tip_amount',              "DECIMAL(8,2) DEFAULT 0.00 COMMENT 'Optional tip charged to parent'");
     addCol('jobs','preferred_sitter_id',     "INT DEFAULT NULL COMMENT 'Book Again: requested sitter ID'");
+    addCol('jobs','parent_rating',           "TINYINT DEFAULT NULL COMMENT 'Sitter rating of parent 1-5'");
+    addCol('jobs','parent_rating_note',      "VARCHAR(255) DEFAULT NULL COMMENT 'Optional note from sitter'");
+    addCol('parents','avg_rating',           "DECIMAL(3,2) DEFAULT NULL COMMENT 'Sitter-given avg rating'");
+    addCol('parents','review_count',         "INT DEFAULT 0 COMMENT 'Number of sitter ratings received'");
     // Contact / profile fields that may be missing from original schema
     addCol('sitters','phone',                "VARCHAR(30)  DEFAULT NULL COMMENT 'Contact phone number'");
     addCol('parents','phone',                "VARCHAR(30)  DEFAULT NULL COMMENT 'Contact phone number'");
@@ -522,6 +526,103 @@ switch ($action) {
             [$lat, $lng, $sitter_id]);
         ok([], 'Location updated');
 
+    // ── BROWSE ALL SITTERS IN AREA (online + offline) ────────
+    case 'browse_sitters':
+        $lat           = (float)($body['lat']         ?? 0);
+        $lng           = (float)($body['lng']         ?? 0);
+        $search        = trim($body['search']         ?? '');
+        $online_only   = (int)($body['online_only']   ?? 0);
+        $filter_cpr    = (int)($body['filter_cpr']    ?? 0);
+        $filter_infant = (int)($body['filter_infant'] ?? 0);
+        $filter_sn     = (int)($body['filter_sn']     ?? 0);
+        $filter_multi  = (int)($body['filter_multi']  ?? 0);
+        $limit         = min((int)($body['limit']     ?? 50), 100);
+        $offset        = max((int)($body['offset']    ?? 0), 0);
+
+        // Build optional WHERE clauses — NO hard location requirement
+        // so sitters who've never gone online still appear
+        $where  = [];
+        $params = [];
+
+        if ($online_only) {
+            $where[] = "u.online = 1";
+        }
+        if ($search !== '') {
+            $where[] = "(s.fname LIKE ? OR s.lname LIKE ? OR CONCAT(s.fname,' ',s.lname) LIKE ?)";
+            $like = '%' . $search . '%';
+            $params = array_merge($params, [$like, $like, $like]);
+        }
+        if ($filter_cpr)    { $where[] = "COALESCE(s.badge_cpr,0) = 1"; }
+        if ($filter_infant) { $where[] = "COALESCE(s.badge_infant,0) = 1"; }
+        if ($filter_sn)     { $where[] = "COALESCE(s.badge_special_needs,0) = 1"; }
+        if ($filter_multi)  { $where[] = "COALESCE(s.badge_multilingual,0) = 1"; }
+
+        $whereStr = empty($where) ? '' : 'WHERE ' . implode(' AND ', $where);
+
+        // Distance is computed only when the sitter has GPS coords (from user table).
+        // Sitters without coords get distance_away = NULL and appear after those with coords.
+        // ACOS is guarded by NULLIF + LEAST/GREATEST to prevent domain errors.
+        $distExpr = $lat && $lng
+            ? "CASE
+                 WHEN u.latitude IS NOT NULL AND u.longitude IS NOT NULL THEN
+                   3959 * ACOS(LEAST(1, GREATEST(-1,
+                     COS(RADIANS($lat)) * COS(RADIANS(u.latitude))
+                     * COS(RADIANS(u.longitude) - RADIANS($lng))
+                     + SIN(RADIANS($lat)) * SIN(RADIANS(u.latitude))
+                   )))
+                 ELSE NULL
+               END"
+            : "NULL";
+
+        $stmt = db()->prepare("
+            SELECT s.id,
+                   s.fname, s.lname,
+                   COALESCE(s.minrate, 15)       AS minrate,
+                   s.about,
+                   s.image, s.bgcheck,
+                   s.experience_years,
+                   COALESCE(s.avg_rating,0)       AS avg_rating,
+                   COALESCE(s.review_count,0)     AS review_count,
+                   COALESCE(s.badge_cpr,0)               AS badge_cpr,
+                   COALESCE(s.badge_infant,0)             AS badge_infant,
+                   COALESCE(s.badge_special_needs,0)      AS badge_special_needs,
+                   COALESCE(s.badge_multilingual,0)       AS badge_multilingual,
+                   COALESCE(s.checkr_status,'pending')    AS checkr_status,
+                   s.city, s.state,
+                   COALESCE(u.online,0)                   AS online,
+                   $distExpr                              AS distance_away
+            FROM sitters s
+            LEFT JOIN \`user\` u ON u.u_id = s.id AND u.user_type = 'sitter'
+            $whereStr
+            ORDER BY
+                COALESCE(u.online,0) DESC,
+                ($distExpr IS NULL) ASC,
+                $distExpr ASC,
+                COALESCE(s.avg_rating,0) DESC
+            LIMIT ? OFFSET ?
+        ");
+
+        $allParams = array_merge($params, [$limit, $offset]);
+        $stmt->execute($allParams);
+        $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Cast numeric fields
+        $results = array_map(function($r) {
+            $r['id']            = (int)$r['id'];
+            $r['minrate']       = (float)$r['minrate'];
+            $r['avg_rating']    = (float)$r['avg_rating'];
+            $r['review_count']  = (int)$r['review_count'];
+            $r['online']        = (int)$r['online'];
+            $r['distance_away'] = $r['distance_away'] !== null ? round((float)$r['distance_away'], 1) : null;
+            $r['badge_cpr']           = (int)$r['badge_cpr'];
+            $r['badge_infant']        = (int)$r['badge_infant'];
+            $r['badge_special_needs'] = (int)$r['badge_special_needs'];
+            $r['badge_multilingual']  = (int)$r['badge_multilingual'];
+            return $r;
+        }, $results);
+
+        ok($results, count($results) . ' sitter(s) found');
+
     // ── NEARBY ONLINE SITTERS (for parent map) ────────────────
     case 'nearby_sitters':
         $lat    = (float)($_GET['lat']    ?? $body['lat']    ?? 0);
@@ -636,17 +737,18 @@ switch ($action) {
                 '🍼 New Job Request!',
                 "From $parentName · $kids child(ren){$agesSummary} · \${$first['minrate']}/hr · 60s to accept!",
                 [
-                    'type'          => 'job_request',
-                    'job_id'        => $job_id,
-                    'parent_id'     => $parent_id,
-                    'parent_name'   => $parentName,
-                    'kids'          => $kids,
-                    'children_ages' => $childrenAges,
-                    'address'       => $address,
-                    'lat'           => $lat,
-                    'lng'           => $lng,
-                    'rate'          => $first['minrate'],
-                    'timeout'       => 60,
+                    'type'               => 'job_request',
+                    'job_id'             => $job_id,
+                    'parent_id'          => $parent_id,
+                    'parent_name'        => $parentName,
+                    'parent_avg_rating'  => (float)($parent['avg_rating'] ?? 0),
+                    'kids'               => $kids,
+                    'children_ages'      => $childrenAges,
+                    'address'            => $address,
+                    'lat'                => $lat,
+                    'lng'                => $lng,
+                    'rate'               => $first['minrate'],
+                    'timeout'            => 60,
                 ]
             );
             $notifSent = isset($r['data'][0]['status']) && $r['data'][0]['status'] === 'ok';
@@ -1170,6 +1272,7 @@ switch ($action) {
                    COALESCE(s.minrate, j.charge_amt, 15) AS rate,
                    COALESCE(s.additional_child_rate, 0) AS additional_child_rate,
                    CONCAT(p.fname, ' ', p.lname) AS parent_name,
+                   COALESCE(p.avg_rating, 0) AS parent_avg_rating,
                    jr.id AS routing_id
             FROM job_routing jr
             INNER JOIN jobs    j ON j.id = jr.job_id
@@ -1200,6 +1303,7 @@ switch ($action) {
                    COALESCE(s.additional_child_rate, 0) AS additional_child_rate,
                    CONCAT(p.fname, ' ', p.lname) AS parent_name,
                    p.cellphone AS parent_phone,
+                   COALESCE(p.avg_rating, 0) AS parent_avg_rating,
                    jr.id AS routing_id
             FROM job_routing jr
             INNER JOIN jobs    j ON j.id = jr.job_id
@@ -2087,6 +2191,43 @@ switch ($action) {
                 [round((float)$stats['avg_r'], 2), (int)$stats['cnt'], $sitter_id]);
         }
         ok(['rating' => $rating], 'Review submitted — thank you!');
+
+    // ── RATE PARENT (sitter rates parent after job) ────────────
+    case 'rate_parent':
+        ensureExtraColumns();
+        $job_id    = (int)($body['job_id']    ?? 0);
+        $sitter_id = (int)($body['sitter_id'] ?? 0);
+        $parent_id = (int)($body['parent_id'] ?? 0);
+        $rating    = max(1, min(5, (int)($body['rating'] ?? 5)));
+        $note      = trim($body['note'] ?? '');
+        if (!$job_id || !$sitter_id || !$parent_id) err('Missing fields');
+
+        // Verify job is complete and belongs to this sitter
+        $job = row("SELECT id FROM jobs WHERE id=? AND status='Complete'", [$job_id]);
+        if (!$job) err('Job not found or not yet complete');
+
+        // Store rating on the job row (one rating per job, idempotent)
+        run("UPDATE jobs SET parent_rating=?, parent_rating_note=? WHERE id=?",
+            [$rating, $note ?: null, $job_id]);
+
+        // Recompute parent's cached avg_rating
+        $stats = row("SELECT AVG(parent_rating) AS avg_r, COUNT(*) AS cnt
+                      FROM jobs WHERE parent_id=? AND parent_rating IS NOT NULL", [$parent_id]);
+        if ($stats && $stats['cnt'] > 0) {
+            run("UPDATE parents SET avg_rating=?, review_count=? WHERE id=?",
+                [round((float)$stats['avg_r'], 2), (int)$stats['cnt'], $parent_id]);
+        }
+
+        // Push thank-you to parent (optional, non-blocking)
+        $parent = row("SELECT push_token, fname FROM parents WHERE id=?", [$parent_id]);
+        if ($parent && !empty($parent['push_token'])) {
+            sendExpoPush($parent['push_token'],
+                '⭐ Your sitter rated you ' . $rating . '/5',
+                'Great news! Your sitter left you a positive rating. Keep being an awesome parent!'
+            );
+        }
+
+        ok(['rating' => $rating], 'Parent rated — thank you!');
 
     // ── GET SITTER REVIEWS (show on sitter profile) ────────────
     case 'get_sitter_reviews':

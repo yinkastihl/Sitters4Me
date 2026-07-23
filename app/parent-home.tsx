@@ -608,6 +608,8 @@ export default function ParentHome() {
               `Hi ${user.fname || 'there'}! Manage your account.`,
               [
                 { text: '👤 Edit Profile',      onPress: () => router.push('/parent-profile-edit') },
+                { text: '🔍 Browse Sitters',   onPress: () => router.push('/sitter-browse') },
+                { text: '⭐ My Favorites',      onPress: () => router.push('/parent-favorites') },
                 { text: '💳 Payment Settings', onPress: () => router.push('/parent-payment-settings') },
                 { text: '🚪 Log Out', style: 'destructive', onPress: () => {
                     global.currentUser = null;
@@ -877,6 +879,18 @@ export default function ParentHome() {
                     </LinearGradient>
                   </TouchableOpacity>
                 </View>
+                {/* Browse All Sitters button */}
+                <TouchableOpacity onPress={() => router.push('/sitter-browse')} activeOpacity={0.88} style={{ marginTop: 8 }}>
+                  <LinearGradient colors={['#02A4E2', '#0270C8', '#1A7F6E']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.inviteBanner}>
+                    <Text style={{ fontSize: 22 }}>🔍</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.inviteBannerTitle}>Browse All Sitters</Text>
+                      <Text style={s.inviteBannerSub}>View profiles, ratings & availability in your area</Text>
+                    </View>
+                    <Text style={{ color: '#fff', fontSize: 20 }}>›</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+
                 {/* Invite & Earn banner */}
                 <TouchableOpacity onPress={() => router.push('/referral')} activeOpacity={0.88} style={{ marginTop: 8 }}>
                   <LinearGradient colors={['#ED1E76', '#C93488', '#9B5BAB']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.inviteBanner}>

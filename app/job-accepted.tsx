@@ -163,6 +163,7 @@ export default function JobAccepted() {
   const [waitElapsed, setWaitElapsed]   = useState(0);   // seconds since sitter ACCEPTED
   const [chargeAmt, setChargeAmt]       = useState<number | null>(null);
   const [arrivedBanner, setArrivedBanner] = useState(false);
+  const [etaMinutes, setEtaMinutes]     = useState<number | null>(null); // live ETA in minutes
 
   // Cancellation
   const [cancelCount, setCancelCount]   = useState(0);
@@ -279,12 +280,42 @@ export default function JobAccepted() {
     setLoading(false);
   };
 
+  // ── ETA helper: Haversine straight-line → driving estimate ──────────────────
+  const calcEta = (
+    sLat: number, sLng: number,
+    pLat: number, pLng: number,
+  ): number => {
+    const R   = 3958.8; // Earth radius in miles
+    const dLat = (pLat - sLat) * Math.PI / 180;
+    const dLng = (pLng - sLng) * Math.PI / 180;
+    const a   = Math.sin(dLat / 2) ** 2
+              + Math.cos(sLat * Math.PI / 180) * Math.cos(pLat * Math.PI / 180)
+              * Math.sin(dLng / 2) ** 2;
+    const dist = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)); // miles
+    // 20 mph avg city speed → minutes; add 1 min floor
+    return Math.max(1, Math.round((dist / 20) * 60));
+  };
+
   const applyJobUpdate = (d: any) => {
+    let newSitterCoord = sitterCoord;
+    let newParentCoord = parentCoord;
+
     if (d.sitter_lat && d.sitter_lng) {
-      setSitterCoord({ latitude: d.sitter_lat, longitude: d.sitter_lng });
+      newSitterCoord = { latitude: d.sitter_lat, longitude: d.sitter_lng };
+      setSitterCoord(newSitterCoord);
     }
     if (d.job_lat && d.job_lng && !parentCoord) {
-      setParentCoord({ latitude: d.job_lat, longitude: d.job_lng });
+      newParentCoord = { latitude: d.job_lat, longitude: d.job_lng };
+      setParentCoord(newParentCoord);
+    }
+
+    // Recompute ETA whenever we have both coords and sitter is still travelling
+    if (newSitterCoord && newParentCoord) {
+      const mins = calcEta(
+        newSitterCoord.latitude, newSitterCoord.longitude,
+        newParentCoord.latitude, newParentCoord.longitude,
+      );
+      setEtaMinutes(mins);
     }
 
     // Kids + rate from actual booking
@@ -634,15 +665,30 @@ export default function JobAccepted() {
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                   <View style={s.waitDot} />
                   <Text style={s.waitLabel}>
-                    {phase === 'arrived' ? 'Sitter at your door' : 'Waiting for sitter'}
+                    {phase === 'arrived' ? 'Sitter at your door' : 'Sitter on the way'}
                   </Text>
                   <Text style={s.waitTimer}>{fmtElapsed(waitElapsed)}</Text>
                 </View>
-                <Text style={s.waitSub}>
-                  {phase === 'arrived'
-                    ? 'Timer will start when sitter begins the job'
-                    : 'Sitter is on the way — timer starts when they begin'}
-                </Text>
+
+                {/* ETA pill — Uber-style */}
+                {phase === 'travelling' && etaMinutes !== null && (
+                  <View style={s.etaRow}>
+                    <View style={s.etaPill}>
+                      <Text style={s.etaPillText}>
+                        🚗 {etaMinutes <= 1 ? 'Arriving now' : `~${etaMinutes} min away`}
+                      </Text>
+                    </View>
+                    <Text style={s.etaNote}>Est. based on live location</Text>
+                  </View>
+                )}
+                {phase === 'arrived' && (
+                  <View style={s.etaRow}>
+                    <View style={[s.etaPill, s.etaPillArrived]}>
+                      <Text style={[s.etaPillText, { color: '#1A7F6E' }]}>✓ Arrived</Text>
+                    </View>
+                    <Text style={s.etaNote}>Timer starts when sitter begins</Text>
+                  </View>
+                )}
               </View>
             )}
 
@@ -1086,6 +1132,12 @@ const s = StyleSheet.create({
   waitLabel:          { flex: 1, fontSize: 14, fontWeight: '700', color: '#A0700A' },
   waitTimer:          { fontSize: 18, fontWeight: '900', color: '#F5A623', fontVariant: ['tabular-nums'] },
   waitSub:            { fontSize: 12, color: '#A0700A', marginTop: 6, opacity: 0.8 },
+  // ETA row
+  etaRow:             { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 10 },
+  etaPill:            { backgroundColor: '#E8F6FD', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 6, borderWidth: 1.5, borderColor: 'rgba(2,164,226,0.25)' },
+  etaPillArrived:     { backgroundColor: '#D4EDE9', borderColor: 'rgba(26,127,110,0.25)' },
+  etaPillText:        { fontSize: 14, fontWeight: '800', color: '#02A4E2' },
+  etaNote:            { fontSize: 11, color: '#A0700A', opacity: 0.75 },
 
   // Map
   mapCard:            { backgroundColor: '#FFFFFF', borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(15,17,23,0.09)' },
