@@ -18,6 +18,8 @@ export default function Referral() {
   const router    = useRouter();
   const user      = (global as any).currentUser || {};
   const userType  = (global as any).userType || 'parent'; // 'parent' | 'sitter'
+  // Sitter auth returns u_id; parent auth returns id — handle both
+  const userId    = user.id || (user as any).u_id || 0;
 
   const [code,    setCode]    = useState<string | null>(null);
   const [credits, setCredits] = useState(0);
@@ -28,11 +30,11 @@ export default function Referral() {
   useEffect(() => { load(); }, []);
 
   const load = async () => {
-    if (!user.id) { setLoading(false); return; }
+    if (!userId) { setLoading(false); return; }
     try {
       const res = await axios.post(`${JOBS_API}?action=get_referral_code`, {
         user_type: userType,
-        user_id:   user.id,
+        user_id:   userId,
       });
       if (res.data?.success) {
         const d = res.data.data;
