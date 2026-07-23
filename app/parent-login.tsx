@@ -65,6 +65,7 @@ export default function ParentLogin() {
       });
       if (res.data.success) {
         global.currentUser = res.data.data;
+        (global as any).userType = 'parent';
         // Register for push notifications and save token to server
         const pushToken = await registerForPush();
         if (pushToken && res.data.data?.id) {

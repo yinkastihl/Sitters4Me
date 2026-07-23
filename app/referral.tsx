@@ -4,8 +4,9 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  StatusBar, ActivityIndicator, Share, Clipboard, Alert,
+  StatusBar, ActivityIndicator, Share, Alert,
 } from 'react-native';
+import * as ExpoClipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -46,9 +47,9 @@ export default function Referral() {
     finally { setLoading(false); }
   };
 
-  const copyCode = () => {
+  const copyCode = async () => {
     if (!code) return;
-    Clipboard.setString(code);
+    try { await ExpoClipboard.setStringAsync(code); } catch { /* fallback silently */ }
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
   };

@@ -61,6 +61,7 @@ export default function SitterLogin() {
       const res = await axios.post(`${API}?action=sitter_login`, { email:email.trim().toLowerCase(), password });
       if (res.data.success) {
         global.currentUser = res.data.data;
+        (global as any).userType = 'sitter';
         const u = res.data.data;
         // Register for push notifications and save token to server
         const pushToken = await registerForPush();
