@@ -132,6 +132,9 @@ function ensureExtraColumns(){
     // Admin notes on sitters/parents
     addCol('sitters','admin_notes',          "TEXT DEFAULT NULL COMMENT 'Internal admin notes'");
     addCol('parents','admin_notes',          "TEXT DEFAULT NULL COMMENT 'Internal admin notes'");
+    // Sitter weekly availability — JSON keyed 0-6 (Sun-Sat):
+    // {"0":{"on":false},"1":{"on":true,"start":"09:00","end":"18:00"}, ...}
+    addCol('sitters','availability_json',    "TEXT DEFAULT NULL COMMENT 'Weekly availability schedule JSON'");
 }
 
 // ── Ensure payout_requests table exists ──────────────────────
@@ -1639,6 +1642,7 @@ switch ($action) {
         $additional_child_rate = (float)($body['additional_child_rate'] ?? 0);
         $work_distance         = (int)($body['work_distance']         ?? 10);
         $about                 = trim($body['about']                  ?? '');
+        $certifications        = isset($body['certifications'])      ? trim($body['certifications'])      : null;
         $badge_cpr             = isset($body['badge_cpr'])           ? (int)$body['badge_cpr']           : null;
         $badge_infant          = isset($body['badge_infant'])        ? (int)$body['badge_infant']        : null;
         $badge_special_needs   = isset($body['badge_special_needs']) ? (int)$body['badge_special_needs'] : null;
@@ -1662,6 +1666,10 @@ switch ($action) {
         if ($about !== '' && colExists('sitters','about')) {
             $updates[] = "about=?";
             $params[]  = $about;
+        }
+        if ($certifications !== null && $certifications !== '' && colExists('sitters','certifications')) {
+            $updates[] = "certifications=?";
+            $params[]  = substr($certifications, 0, 255);
         }
         // Badge fields — only include if sent and columns exist
         if ($badge_cpr !== null && colExists('sitters','badge_cpr')) {
@@ -1701,6 +1709,35 @@ switch ($action) {
 
     // ── GET SITTER PROFILE ────────────────────────────────────
     // get_sitter_profile — full version is below (after push token); this stub intentionally removed
+
+    // ── GET SITTER AVAILABILITY ───────────────────────────────
+    case 'get_sitter_availability':
+        $sitter_id = (int)($body['sitter_id'] ?? $_GET['sitter_id'] ?? 0);
+        if (!$sitter_id) err('Missing sitter_id');
+        $row = row("SELECT availability_json FROM sitters WHERE id=?", [$sitter_id]);
+        if (!$row) err('Sitter not found');
+        $avail = $row['availability_json'] ? json_decode($row['availability_json'], true) : null;
+        ok(['availability' => $avail], 'ok');
+
+    // ── SAVE SITTER AVAILABILITY ─────────────────────────────
+    case 'save_sitter_availability':
+        $sitter_id = (int)($body['sitter_id'] ?? 0);
+        $avail     = $body['availability']   ?? null;
+        if (!$sitter_id) err('Missing sitter_id');
+        if (!is_array($avail)) err('Missing availability data');
+        // Sanitise: only allow keys 0-6, each having on(bool), start/end HH:MM
+        $clean = [];
+        for ($d = 0; $d <= 6; $d++) {
+            $day = $avail[$d] ?? $avail[(string)$d] ?? null;
+            if (!$day) { $clean[$d] = ['on' => false]; continue; }
+            $on    = !empty($day['on']);
+            $start = preg_match('/^\d{2}:\d{2}$/', $day['start'] ?? '') ? $day['start'] : '08:00';
+            $end   = preg_match('/^\d{2}:\d{2}$/', $day['end']   ?? '') ? $day['end']   : '18:00';
+            $clean[$d] = $on ? ['on' => true, 'start' => $start, 'end' => $end] : ['on' => false];
+        }
+        run("UPDATE sitters SET availability_json=? WHERE id=?",
+            [json_encode($clean), $sitter_id]);
+        ok(['availability' => $clean], 'Availability saved');
 
     // ── SITTER JOB HISTORY ────────────────────────────────────
     // All completed jobs for a sitter — used in Job History tab
@@ -2105,6 +2142,7 @@ switch ($action) {
             SELECT s.id, s.fname, s.lname, s.minrate, s.image, s.about, s.bgcheck,
                    s.city, s.state,
                    s.experience_years, s.certifications,
+                   s.availability_json,
                    COALESCE(s.avg_rating,0)          AS avg_rating,
                    COALESCE(s.review_count,0)        AS review_count,
                    COALESCE(s.badge_cpr,0)           AS badge_cpr,
@@ -2121,6 +2159,13 @@ switch ($action) {
             LEFT JOIN `user` u ON u.u_id = s.id AND u.user_type='sitter'
             WHERE s.id=?", [$sitter_id]);
         if (!$sitter) err('Sitter not found');
+        // Decode availability JSON into an array for the client
+        if (!empty($sitter['availability_json'])) {
+            $sitter['availability'] = json_decode($sitter['availability_json'], true);
+        } else {
+            $sitter['availability'] = null;
+        }
+        unset($sitter['availability_json']);
         $reviews = rows("
             SELECT r.id, r.rating, r.review_text, r.created_at,
                    p.fname AS parent_fname, p.lname AS parent_lname

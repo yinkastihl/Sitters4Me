@@ -674,11 +674,14 @@ export default function SitterHome() {
 
         {/* QUICK ACTIONS */}
         <Text style={s.sectionTitle}>Quick Actions</Text>
-        <View style={s.quickRow}>
+        <View style={s.quickGrid}>
           {[
-            { icon: '📅', label: 'Availability', action: () => Alert.alert('Availability', 'Set your weekly availability schedule — coming soon!') },
-            { icon: '💰', label: 'Earnings',     action: () => router.push('/sitter-earnings') },
-            { icon: '💼', label: 'Job History',  action: () => router.push('/sitter-earnings') },
+            { icon: '📅', label: 'Availability',   sub: 'Set your schedule',    action: () => router.push('/sitter-availability') },
+            { icon: '💰', label: 'Earnings',        sub: 'View pay & payouts',   action: () => router.push('/sitter-earnings') },
+            { icon: '🏦', label: 'Direct Deposit',  sub: 'Bank & payout setup',  action: () => router.push('/sitter-bank-setup') },
+            { icon: '✏️', label: 'Edit Profile',    sub: 'Rates, bio & badges',  action: () => router.push('/sitter-profile-edit') },
+            { icon: '📋', label: 'Job History',     sub: 'Past completed jobs',  action: () => router.push('/sitter-earnings') },
+            { icon: '🌍', label: 'Specializations', sub: 'CPR, infant & more',   action: () => router.push('/sitter-profile-edit') },
           ].map((q, i) => (
             <TouchableOpacity
               key={i}
@@ -686,8 +689,9 @@ export default function SitterHome() {
               onPress={q.action}
               activeOpacity={0.85}
             >
-              <Text style={{ fontSize: 28 }}>{q.icon}</Text>
+              <Text style={s.quickIcon}>{q.icon}</Text>
               <Text style={s.quickLabel}>{q.label}</Text>
+              <Text style={s.quickSub}>{q.sub}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -870,9 +874,11 @@ const s = StyleSheet.create({
   beginJobText:        { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
   beginJobBtnDisabled: { borderRadius: 12, paddingVertical: 12, alignItems: 'center', backgroundColor: '#F5F4F0', borderWidth: 1, borderColor: '#E5E2DA' },
   beginJobTextDisabled:{ color: '#9B9FAE', fontSize: 13, fontWeight: '600' },
-  quickRow:        { flexDirection: 'row', gap: 10 },
-  quickBtn:        { flex: 1, backgroundColor: '#FFFFFF', borderRadius: 14, padding: 16, alignItems: 'center', gap: 6, borderWidth: 1, borderColor: 'rgba(15,17,23,0.09)', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 2 },
-  quickLabel:      { fontSize: 11, fontWeight: '600', color: '#5A5F72', textAlign: 'center' },
+  quickGrid:       { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  quickBtn:        { width: '47%', flexGrow: 1, backgroundColor: '#FFFFFF', borderRadius: 14, padding: 14, gap: 4, borderWidth: 1, borderColor: 'rgba(15,17,23,0.09)', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 2 },
+  quickIcon:       { fontSize: 26, marginBottom: 2 },
+  quickLabel:      { fontSize: 13, fontWeight: '800', color: '#0F1117' },
+  quickSub:        { fontSize: 11, color: '#9B9FAE', fontWeight: '500' },
   overlay:         { position: 'absolute', inset: 0, backgroundColor: 'rgba(15,17,23,0.75)', justifyContent: 'flex-end' },
   modal:           { backgroundColor: '#FFFFFF', borderTopLeftRadius: 28, borderTopRightRadius: 28, overflow: 'hidden' },
   progTrack:       { height: 5, backgroundColor: '#EEECE7' },

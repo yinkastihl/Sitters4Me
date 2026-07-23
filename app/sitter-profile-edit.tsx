@@ -25,6 +25,7 @@ export default function SitterProfileEdit() {
   const [addChildRate,   setAddChildRate]   = useState('');
   const [workDistance,   setWorkDistance]   = useState('');
   const [about,          setAbout]          = useState('');
+  const [certifications, setCerts]          = useState('');
 
   // Specialization badges
   const [badgeCpr,          setBadgeCpr]          = useState(false);
@@ -50,6 +51,7 @@ export default function SitterProfileEdit() {
         setAddChildRate(String(d.additional_child_rate || '2'));
         setWorkDistance(String(d.work_distance         || '10'));
         setAbout(d.about || '');
+        setCerts(d.certifications || '');
         setBadgeCpr(d.badge_cpr == 1 || d.badge_cpr === true);
         setBadgeInfant(d.badge_infant == 1 || d.badge_infant === true);
         setBadgeSpecialNeeds(d.badge_special_needs == 1 || d.badge_special_needs === true);
@@ -104,6 +106,7 @@ export default function SitterProfileEdit() {
         additional_child_rate: add,
         work_distance:         dist,
         about:                 about.trim(),
+        certifications:        certifications.trim(),
         badge_cpr:             badgeCpr ? 1 : 0,
         badge_infant:          badgeInfant ? 1 : 0,
         badge_special_needs:   badgeSpecialNeeds ? 1 : 0,
@@ -236,6 +239,23 @@ export default function SitterProfileEdit() {
               maxLength={500}
             />
             <Text style={s.charCount}>{about.length} / 500</Text>
+          </View>
+
+          {/* ── LICENSES & CERTIFICATIONS ────────────────── */}
+          <View style={s.section}>
+            <Text style={s.sectionTitle}>Licenses & Certifications</Text>
+            <Text style={s.sectionSub}>Displayed on your profile to help parents trust you faster</Text>
+            <TextInput
+              style={[s.input, { height: 70, textAlignVertical: 'top' }]}
+              value={certifications}
+              onChangeText={setCerts}
+              placeholder="e.g. CPR by Red Cross, First Aid, Early Childhood Education, Nursing Student…"
+              placeholderTextColor="#9B9FAE"
+              multiline
+              numberOfLines={3}
+              maxLength={255}
+            />
+            <Text style={s.charCount}>{certifications.length} / 255</Text>
           </View>
 
           {/* ── HOURLY RATES ──────────────────────────────── */}
@@ -387,6 +407,23 @@ export default function SitterProfileEdit() {
               </TouchableOpacity>
             ))}
           </View>
+
+          {/* ── AVAILABILITY SHORTCUT ─────────────────────── */}
+          <TouchableOpacity
+            onPress={() => router.push('/sitter-availability')}
+            style={s.saveWrap}
+            activeOpacity={0.85}
+          >
+            <LinearGradient
+              colors={['#02A4E2', '#0270C8']}
+              start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+              style={s.saveBtn}
+            >
+              <Text style={s.saveBtnTxt}>📅  Set My Availability</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+
+          <View style={{ height: 4 }} />
 
           {/* ── SAVE BUTTON ───────────────────────────────── */}
           <TouchableOpacity onPress={handleSave} disabled={saving} activeOpacity={0.85} style={s.saveWrap}>

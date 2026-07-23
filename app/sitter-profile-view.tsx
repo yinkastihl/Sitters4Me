@@ -267,6 +267,45 @@ export default function SitterProfileView() {
             </View>
           )}
 
+          {/* ── Availability ── */}
+          {(() => {
+            const avail = profile.availability
+              ? (typeof profile.availability === 'string'
+                  ? JSON.parse(profile.availability)
+                  : profile.availability)
+              : null;
+            if (!avail) return null;
+            const DAYS_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+            const fmt12 = (t: string) => {
+              if (!t) return '';
+              const [hh, mm] = t.split(':').map(Number);
+              const ap  = hh < 12 ? 'AM' : 'PM';
+              const h12 = hh === 0 ? 12 : hh > 12 ? hh - 12 : hh;
+              return `${h12}:${String(mm).padStart(2,'0')} ${ap}`;
+            };
+            const hasAny = Object.values(avail).some((d: any) => d?.on);
+            if (!hasAny) return null;
+            return (
+              <View style={s.section}>
+                <Text style={s.sectionTitle}>Availability</Text>
+                <View style={{ gap: 6 }}>
+                  {[0,1,2,3,4,5,6].map(i => {
+                    const d: any = avail[i] ?? avail[String(i)];
+                    if (!d?.on) return null;
+                    return (
+                      <View key={i} style={s.availRow}>
+                        <View style={s.availDayChip}>
+                          <Text style={s.availDayText}>{DAYS_SHORT[i]}</Text>
+                        </View>
+                        <Text style={s.availHours}>{fmt12(d.start)} – {fmt12(d.end)}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+            );
+          })()}
+
           {/* ── Experience / Certifications ── */}
           {(!!profile.experience_years || !!profile.certifications) && (
             <View style={s.section}>
@@ -430,6 +469,11 @@ const s = StyleSheet.create({
   badgeOrange:     { backgroundColor: '#FDECD0', borderColor: '#F5C880' },
   badgeTeal:       { backgroundColor: '#D0F0EC', borderColor: '#80D5CB' },
   badgeText:       { fontSize: 13, fontWeight: '600', color: '#5A5F72' },
+
+  availRow:        { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  availDayChip:    { width: 44, height: 28, borderRadius: 8, backgroundColor: '#02A4E2', alignItems: 'center', justifyContent: 'center' },
+  availDayText:    { fontSize: 12, fontWeight: '800', color: '#FFFFFF' },
+  availHours:      { fontSize: 14, color: '#5A5F72', fontWeight: '600' },
 
   section:         { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 16, marginBottom: 14, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2 },
   sectionTitle:    { fontSize: 16, fontWeight: '800', color: '#0F1117', marginBottom: 10 },

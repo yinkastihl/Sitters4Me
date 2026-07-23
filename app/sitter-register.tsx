@@ -35,8 +35,13 @@ export default function SitterRegister() {
   const [distance, setDistance]   = useState('10');
   const [exp, setExp]             = useState('');
 
-  // Step 3 — Bio & consent
-  const [about, setAbout]         = useState('');
+  // Step 3 — Specializations, bio & consent
+  const [about, setAbout]             = useState('');
+  const [certifications, setCerts]    = useState('');
+  const [badgeCpr,          setBadgeCpr]          = useState(false);
+  const [badgeInfant,       setBadgeInfant]       = useState(false);
+  const [badgeSpecialNeeds, setBadgeSpecialNeeds] = useState(false);
+  const [badgeMultilingual, setBadgeMultilingual] = useState(false);
   const [agreedBG, setAgreedBG]   = useState(false);
   const [agreed, setAgreed]       = useState(false);
 
@@ -98,19 +103,34 @@ export default function SitterRegister() {
         global.currentUser = res.data.data;
         const sitterId = res.data.data?.id;
 
-        // Trigger Checkr background check — fire-and-forget, don't block navigation
+        // Save specialization badges + certifications — fire-and-forget
         if (sitterId) {
+          const JOBS_API = 'https://sitters4me.com/api/jobs.php';
+          axios.post(`${JOBS_API}?action=update_sitter_profile`, {
+            sitter_id:           sitterId,
+            minrate:             parseFloat(minrate) || 15,
+            maxrate:             parseFloat(maxrate) || 25,
+            additional_child_rate: 2,
+            work_distance:       parseInt(distance) || 10,
+            about:               about.trim(),
+            certifications:      certifications.trim(),
+            badge_cpr:           badgeCpr ? 1 : 0,
+            badge_infant:        badgeInfant ? 1 : 0,
+            badge_special_needs: badgeSpecialNeeds ? 1 : 0,
+            badge_multilingual:  badgeMultilingual ? 1 : 0,
+          }).catch(() => {}); // non-fatal — sitter can update from profile edit
+
+          // Trigger Checkr background check — fire-and-forget
           axios.post(`${CHECKR_API}?action=initiate_check`, { sitter_id: sitterId })
             .then(checkrRes => {
               if (checkrRes.data?.success) {
-                // Store invitation URL so pending screen can show it
                 const invUrl = checkrRes.data?.data?.invitation_url;
                 if (invUrl) {
                   global.currentUser = { ...global.currentUser, checkr_invitation_url: invUrl };
                 }
               }
             })
-            .catch(() => {}); // non-fatal — pending screen polls status
+            .catch(() => {});
         }
 
         router.replace('/sitter-pending');
@@ -240,12 +260,53 @@ export default function SitterRegister() {
 
               {/* STEP 3 */}
               {step===3 && <>
-                <Text style={s.stepTitle}>Bio & Consent</Text>
+                <Text style={s.stepTitle}>Skills, Bio & Consent</Text>
 
+                {/* ── Specializations ── */}
+                <View style={s.field}>
+                  <Text style={s.label}>SPECIALIZATIONS</Text>
+                  <Text style={s.hint}>Select all that apply — shown to parents as trust badges on your profile</Text>
+                  <View style={s.badgeGrid}>
+                    {([
+                      { key:'cpr',    emoji:'❤️', title:'CPR Certified',   desc:'Hold a valid CPR / AED cert',         val:badgeCpr,          set:setBadgeCpr },
+                      { key:'infant', emoji:'🍼', title:'Infant Care',      desc:'Comfortable with babies under 12 mo', val:badgeInfant,       set:setBadgeInfant },
+                      { key:'sn',     emoji:'🌟', title:'Special Needs',    desc:'Experience with special needs kids',  val:badgeSpecialNeeds, set:setBadgeSpecialNeeds },
+                      { key:'multi',  emoji:'🌍', title:'Multilingual',     desc:'Speak more than one language',        val:badgeMultilingual, set:setBadgeMultilingual },
+                    ] as const).map(item => (
+                      <TouchableOpacity
+                        key={item.key}
+                        style={[s.badgeCard, item.val && s.badgeCardOn]}
+                        onPress={() => (item.set as any)(!item.val)}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={s.badgeEmoji}>{item.emoji}</Text>
+                        <Text style={[s.badgeTitle, item.val && s.badgeTitleOn]}>{item.title}</Text>
+                        <Text style={s.badgeDesc}>{item.desc}</Text>
+                        {item.val && <View style={s.badgeCheck}><Text style={{color:'#fff',fontSize:11,fontWeight:'900'}}>✓</Text></View>}
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                {/* ── Licenses / Certifications ── */}
+                <View style={s.field}>
+                  <Text style={s.label}>LICENSES & CERTIFICATIONS (OPTIONAL)</Text>
+                  <Text style={s.hint}>e.g. CPR by Red Cross, First Aid, Early Childhood Education, Nursing Student</Text>
+                  <TextInput
+                    style={s.input}
+                    value={certifications}
+                    onChangeText={setCerts}
+                    placeholder="List any relevant licenses or certifications…"
+                    placeholderTextColor="#9B9FAE"
+                    maxLength={255}
+                  />
+                </View>
+
+                {/* ── About ── */}
                 <View style={s.field}>
                   <Text style={s.label}>ABOUT YOU (OPTIONAL)</Text>
-                  <TextInput style={[s.input,{height:110,textAlignVertical:'top'}]} value={about} onChangeText={setAbout}
-                    placeholder="Tell parents about your experience, any certifications, and why you love babysitting..." placeholderTextColor="#9B9FAE" multiline numberOfLines={4} />
+                  <TextInput style={[s.input,{height:100,textAlignVertical:'top'}]} value={about} onChangeText={setAbout}
+                    placeholder="Tell parents about your personality, hobbies with kids, and why you love babysitting…" placeholderTextColor="#9B9FAE" multiline numberOfLines={4} />
                 </View>
 
                 {/* Background check — detailed explanation, no SSN mention */}
@@ -317,6 +378,14 @@ const s = StyleSheet.create({
   chip:         {paddingHorizontal:16,paddingVertical:9,borderRadius:20,borderWidth:1.5,borderColor:'rgba(15,17,23,0.15)',backgroundColor:'#FFFFFF'},
   chipOn:       {backgroundColor:'#02A4E2',borderColor:'#02A4E2'},
   chipText:     {fontSize:13,fontWeight:'600',color:'#5A5F72'},
+  badgeGrid:    {flexDirection:'row',flexWrap:'wrap',gap:10},
+  badgeCard:    {width:'47%',backgroundColor:'#F5F4F0',borderRadius:14,padding:14,borderWidth:1.5,borderColor:'rgba(15,17,23,0.1)',position:'relative'},
+  badgeCardOn:  {backgroundColor:'#EAF5FD',borderColor:'#02A4E2'},
+  badgeEmoji:   {fontSize:22,marginBottom:6},
+  badgeTitle:   {fontSize:13,fontWeight:'800',color:'#0F1117',marginBottom:3},
+  badgeTitleOn: {color:'#0270C8'},
+  badgeDesc:    {fontSize:11,color:'#9B9FAE',lineHeight:16},
+  badgeCheck:   {position:'absolute',top:8,right:8,width:20,height:20,borderRadius:10,backgroundColor:'#02A4E2',alignItems:'center',justifyContent:'center'},
   bgBox:        {backgroundColor:'#E8F6FD',borderRadius:14,padding:16,marginBottom:16,borderWidth:1,borderColor:'rgba(2,164,226,0.2)'},
   bgTitle:      {fontSize:14,fontWeight:'800',color:'#1C5EA8',marginBottom:8},
   bgText:       {fontSize:13,color:'#1C5EA8',lineHeight:20},
