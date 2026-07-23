@@ -28,10 +28,11 @@ export default function ParentFavorites() {
   const router = useRouter();
   const user   = (global as any).currentUser || {};
 
-  const [sitters,    setSitters]    = useState<any[]>([]);
-  const [loading,    setLoading]    = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [removing,   setRemoving]   = useState<number | null>(null);
+  const [sitters,        setSitters]        = useState<any[]>([]);
+  const [loading,        setLoading]        = useState(true);
+  const [refreshing,     setRefreshing]     = useState(false);
+  const [removing,       setRemoving]       = useState<number | null>(null);
+  const [togglingNotify, setTogglingNotify] = useState<number | null>(null);
 
   const load = useCallback(async (isRefresh = false) => {
     if (!user.id) { setLoading(false); return; }
@@ -76,6 +77,25 @@ export default function ParentFavorites() {
     );
   };
 
+  const toggleNotify = async (sitter: any) => {
+    const newVal = sitter.notify_when_online ? 0 : 1;
+    setTogglingNotify(sitter.id);
+    try {
+      await axios.post(`${JOBS_API}?action=toggle_notify_favorite`, {
+        parent_id: user.id,
+        sitter_id: sitter.id,
+        notify:    newVal,
+      });
+      setSitters(prev =>
+        prev.map(s => s.id === sitter.id ? { ...s, notify_when_online: newVal } : s)
+      );
+    } catch {
+      Alert.alert('Error', 'Could not update notification setting.');
+    } finally {
+      setTogglingNotify(null);
+    }
+  };
+
   const viewProfile = (sitter: any) => {
     (global as any).viewSitter = sitter;
     router.push('/sitter-profile-view');
@@ -88,10 +108,11 @@ export default function ParentFavorites() {
   };
 
   const renderSitter = ({ item: st }: { item: any }) => {
-    const isOnline   = st.online === 1 || st.online === '1' || st.online === true;
-    const avgRating  = parseFloat(st.avg_rating) || 0;
-    const reviewCnt  = parseInt(st.review_count) || 0;
-    const initials   = `${(st.fname || '?')[0]}${(st.lname || '?')[0]}`.toUpperCase();
+    const isOnline    = st.online === 1 || st.online === '1' || st.online === true;
+    const avgRating   = parseFloat(st.avg_rating) || 0;
+    const reviewCnt   = parseInt(st.review_count) || 0;
+    const initials    = `${(st.fname || '?')[0]}${(st.lname || '?')[0]}`.toUpperCase();
+    const notifyOn    = st.notify_when_online === 1 || st.notify_when_online === '1' || st.notify_when_online === true;
 
     return (
       <TouchableOpacity
@@ -165,6 +186,18 @@ export default function ParentFavorites() {
             {removing === st.id
               ? <ActivityIndicator color="#C93488" size="small" />
               : <Text style={s.removeBtnText}>♥</Text>
+            }
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[s.bellBtn, notifyOn && s.bellBtnActive]}
+            onPress={() => toggleNotify(st)}
+            disabled={togglingNotify === st.id}
+            activeOpacity={0.8}
+          >
+            {togglingNotify === st.id
+              ? <ActivityIndicator color={notifyOn ? '#FFFFFF' : '#9B9FAE'} size="small" />
+              : <Text style={s.bellIcon}>{notifyOn ? '🔔' : '🔕'}</Text>
             }
           </TouchableOpacity>
         </View>
@@ -286,4 +319,7 @@ const s = StyleSheet.create({
   bookBtnText:     { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
   removeBtn:       { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   removeBtnText:   { fontSize: 22, color: '#C93488' },
+  bellBtn:         { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F0EEE9', borderWidth: 1.5, borderColor: '#E5E2DA' },
+  bellBtnActive:   { backgroundColor: '#02A4E2', borderColor: '#02A4E2' },
+  bellIcon:        { fontSize: 16 },
 });

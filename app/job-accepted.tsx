@@ -140,6 +140,12 @@ export default function JobAccepted() {
   const [loading, setLoading]       = useState(true);
   const job                         = global.activeJob || {};
 
+  // Persisted IDs — captured the moment they're first known and never cleared,
+  // so review/tip submissions still work after global.activeJob is set to null.
+  const jobIdRef    = useRef<number>(Number(job?.job_id || job?.id) || 0);
+  const parentIdRef = useRef<number>(Number((global.currentUser as any)?.id) || 0);
+  const sitterIdRef = useRef<number>(Number(job?.sitter_id) || 0);
+
   // Kids + rate state — populated from job_status poll
   const [jobKids, setJobKids]             = useState<number>(0);
   const [childAges, setChildAges]         = useState<number[]>([]);
@@ -263,6 +269,10 @@ export default function JobAccepted() {
           about:   d.about || '',
           bgcheck: d.bgcheck || 'N',
         });
+        if (d.sitter_id && Number(d.sitter_id)) sitterIdRef.current = Number(d.sitter_id);
+        if (d.parent_id && Number(d.parent_id)) parentIdRef.current = Number(d.parent_id);
+        const jid = d.job_id || job?.job_id || job?.id;
+        if (jid && Number(jid)) jobIdRef.current = Number(jid);
         applyJobUpdate(d);
       }
     } catch {}
@@ -294,7 +304,13 @@ export default function JobAccepted() {
     if (d.review_count !== undefined) setReviewCount(Number(d.review_count));
 
     // Cancellation policy
-    if (d.parent_id)   setParentId(Number(d.parent_id));
+    if (d.parent_id) {
+      setParentId(Number(d.parent_id));
+      if (Number(d.parent_id)) parentIdRef.current = Number(d.parent_id);
+    }
+    if (d.sitter_id && Number(d.sitter_id)) sitterIdRef.current = Number(d.sitter_id);
+    const resolvedJobId = d.job_id || job?.job_id || job?.id;
+    if (resolvedJobId && Number(resolvedJobId)) jobIdRef.current = Number(resolvedJobId);
     if (d.cancel_count !== undefined) setCancelCount(Number(d.cancel_count));
     if (d.cancel_free  !== undefined) setCancelFree(Boolean(d.cancel_free));
 
@@ -465,9 +481,9 @@ export default function JobAccepted() {
   // ── SUBMIT REVIEW ─────────────────────────────────────────────
   const submitReview = async () => {
     setReviewError(null);
-    const jobId    = job?.job_id || job?.id;
-    const pid      = parentId || Number(user.id) || 0;
-    const sid      = sitter?.id || Number(job?.sitter_id) || 0;
+    const jobId = jobIdRef.current || Number(job?.job_id || job?.id) || 0;
+    const pid   = parentIdRef.current || parentId || Number(user.id) || 0;
+    const sid   = sitterIdRef.current || Number(sitter?.id) || Number(job?.sitter_id) || 0;
     if (!jobId || !pid || !sid) {
       setReviewError('Missing job data — please try again.');
       return;
@@ -525,8 +541,8 @@ export default function JobAccepted() {
   const sendTip = async (amount: number) => {
     if (amount < 1) return Alert.alert('Invalid Amount', 'Please enter a tip of at least $1.');
     if (amount > 200) return Alert.alert('Too Large', 'Maximum tip is $200.');
-    const jobId = job?.job_id || job?.id;
-    const pid   = parentId || Number(user.id) || 0;
+    const jobId = jobIdRef.current || Number(job?.job_id || job?.id) || 0;
+    const pid   = parentIdRef.current || parentId || Number(user.id) || 0;
     if (!jobId || !pid) return Alert.alert('Error', 'Missing job data. Please try again.');
     setSendingTip(true);
     try {

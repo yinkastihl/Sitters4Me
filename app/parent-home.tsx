@@ -35,6 +35,11 @@ export default function ParentHome() {
   const [onlineSitters, setOnlineSitters]   = useState<any[]>([]);
   const [sittersLoading, setSittersLoading] = useState(false);
   const [selected, setSelected]             = useState<any>(null);
+  // Specialization filters
+  const [filterCpr,          setFilterCpr]          = useState(false);
+  const [filterInfant,       setFilterInfant]       = useState(false);
+  const [filterSpecialNeeds, setFilterSpecialNeeds] = useState(false);
+  const [filterMultilingual, setFilterMultilingual] = useState(false);
   const [requesting, setRequesting]         = useState(false);
   const [requestSent, setRequestSent]       = useState(false);
   const [queue, setQueue]                   = useState<any[]>([]);
@@ -776,10 +781,40 @@ export default function ParentHome() {
                   </LinearGradient>
                 </TouchableOpacity>
 
+                {/* Specialization filter chips */}
+                {onlineSitters.length > 0 && (() => {
+                  const filters: { key: string; label: string; val: boolean; set: (v: boolean) => void }[] = [
+                    { key: 'cpr',    label: '❤️ CPR',          val: filterCpr,           set: setFilterCpr },
+                    { key: 'infant', label: '🍼 Infant',        val: filterInfant,        set: setFilterInfant },
+                    { key: 'sn',     label: '🌟 Special Needs', val: filterSpecialNeeds,  set: setFilterSpecialNeeds },
+                    { key: 'multi',  label: '🌍 Multilingual',  val: filterMultilingual,  set: setFilterMultilingual },
+                  ];
+                  return (
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 8, paddingRight: 16 }}>
+                      {filters.map(f => (
+                        <TouchableOpacity
+                          key={f.key}
+                          style={[s.filterChip, f.val && s.filterChipActive]}
+                          onPress={() => f.set(!f.val)}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={[s.filterChipText, f.val && s.filterChipTextActive]}>{f.label}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  );
+                })()}
+
                 {/* Online sitter chips */}
                 <Text style={s.chipLabel}>Online Now — Tap to View Profile</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingRight: 16 }}>
-                  {onlineSitters.map((st, i) => (
+                  {onlineSitters.filter(st => {
+                    if (filterCpr          && st.badge_cpr           != 1) return false;
+                    if (filterInfant       && st.badge_infant        != 1) return false;
+                    if (filterSpecialNeeds && st.badge_special_needs != 1) return false;
+                    if (filterMultilingual && st.badge_multilingual  != 1) return false;
+                    return true;
+                  }).map((st, i) => (
                     <TouchableOpacity key={st.id || i} style={s.chip} onPress={() => viewSitterProfile(st)} activeOpacity={0.85}>
                       <View style={s.chipAv}>
                         {st.image
@@ -796,6 +831,13 @@ export default function ParentHome() {
                         <Text style={s.chipDist}>
                           {st.distance_away ? parseFloat(st.distance_away).toFixed(1) + ' mi' : 'Nearby'}
                         </Text>
+                        {/* Mini badge row */}
+                        <View style={{ flexDirection: 'row', gap: 3, flexWrap: 'wrap', marginTop: 3 }}>
+                          {st.badge_cpr           == 1 && <Text style={s.miniBadge}>❤️</Text>}
+                          {st.badge_infant        == 1 && <Text style={s.miniBadge}>🍼</Text>}
+                          {st.badge_special_needs == 1 && <Text style={s.miniBadge}>🌟</Text>}
+                          {st.badge_multilingual  == 1 && <Text style={s.miniBadge}>🌍</Text>}
+                        </View>
                       </View>
                     </TouchableOpacity>
                   ))}
@@ -1292,6 +1334,11 @@ const s = StyleSheet.create({
   liveDot:           { width: 10, height: 10, borderRadius: 5, backgroundColor: '#FFFFFF' },
   requestBtnTitle:   { fontSize: 16, fontWeight: '900', color: '#FFFFFF', letterSpacing: -0.3 },
   requestBtnSub:     { fontSize: 11, color: 'rgba(255,255,255,0.85)', marginTop: 2 },
+  filterChip:        { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, backgroundColor: '#F5F4F0', borderWidth: 1.5, borderColor: '#E5E2DA' },
+  filterChipActive:  { backgroundColor: '#0F1117', borderColor: '#0F1117' },
+  filterChipText:    { fontSize: 12, fontWeight: '700', color: '#5A5F72' },
+  filterChipTextActive: { color: '#FFFFFF' },
+  miniBadge:         { fontSize: 11 },
   chipLabel:         { fontSize: 13, fontWeight: '800', color: '#0F1117', marginBottom: 10 },
   chip:              { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#F5F4F0', borderRadius: 14, padding: 10, paddingRight: 14, borderWidth: 1, borderColor: '#E5E2DA' },
   chipAv:            { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },

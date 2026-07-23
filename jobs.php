@@ -103,6 +103,11 @@ function ensureExtraColumns(){
     // Checkr background check tracking
     addCol('sitters','checkr_candidate_id',  "VARCHAR(64) DEFAULT NULL COMMENT 'Checkr candidate ID'");
     addCol('sitters','checkr_report_id',     "VARCHAR(64) DEFAULT NULL COMMENT 'Checkr report ID'");
+    // Sitter specialization badges — shown on profile and filterable on parent map
+    addCol('sitters','badge_cpr',           "TINYINT DEFAULT 0 COMMENT 'CPR Certified'");
+    addCol('sitters','badge_infant',        "TINYINT DEFAULT 0 COMMENT 'Infant care experience'");
+    addCol('sitters','badge_special_needs', "TINYINT DEFAULT 0 COMMENT 'Special needs experience'");
+    addCol('sitters','badge_multilingual',  "TINYINT DEFAULT 0 COMMENT 'Speaks multiple languages'");
     addCol('sitters','checkr_status',        "VARCHAR(32) DEFAULT 'pending' COMMENT 'pending|consider|clear|suspended'");
     addCol('sitters','checkr_invitation_url',"VARCHAR(512) DEFAULT NULL COMMENT 'Checkr hosted apply flow URL'");
     // Scheduled job extras
@@ -145,6 +150,29 @@ function ensurePayoutTable(){
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 }
 
+// ── Ensure children profile table exists ─────────────────────
+function ensureChildrenTable(){
+    try {
+        db()->exec("CREATE TABLE IF NOT EXISTS children (
+            id                      INT AUTO_INCREMENT PRIMARY KEY,
+            parent_id               INT NOT NULL,
+            name                    VARCHAR(100) NOT NULL,
+            age                     TINYINT UNSIGNED DEFAULT NULL,
+            allergies               TEXT DEFAULT NULL COMMENT 'JSON array of allergy strings',
+            medical_notes           TEXT DEFAULT NULL,
+            bedtime_routine         TEXT DEFAULT NULL,
+            emergency_contact_name  VARCHAR(100) DEFAULT NULL,
+            emergency_contact_phone VARCHAR(30)  DEFAULT NULL,
+            special_needs           TEXT DEFAULT NULL,
+            is_active               TINYINT DEFAULT 1,
+            created_at              TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_parent (parent_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    } catch (Exception $e) {
+        error_log("ensureChildrenTable: " . $e->getMessage());
+    }
+}
+
 // ── Ensure messages table exists ─────────────────────────────
 function ensureMessagesTable(){
     db()->exec("CREATE TABLE IF NOT EXISTS messages (
@@ -178,13 +206,17 @@ function ensureReviewsTable(){
 // ── Ensure favorite_sitters table exists ─────────────────────
 function ensureFavoritesTable(){
     db()->exec("CREATE TABLE IF NOT EXISTS favorite_sitters (
-        id         INT AUTO_INCREMENT PRIMARY KEY,
-        parent_id  INT NOT NULL DEFAULT 0,
-        sitter_id  INT NOT NULL DEFAULT 0,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        id                 INT AUTO_INCREMENT PRIMARY KEY,
+        parent_id          INT NOT NULL DEFAULT 0,
+        sitter_id          INT NOT NULL DEFAULT 0,
+        notify_when_online TINYINT DEFAULT 0 COMMENT '1=push parent when this sitter goes online',
+        created_at         DATETIME DEFAULT CURRENT_TIMESTAMP,
         UNIQUE KEY uq_pair (parent_id, sitter_id),
-        INDEX idx_parent (parent_id)
+        INDEX idx_parent (parent_id),
+        INDEX idx_sitter (sitter_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    // Add column if table already exists without it
+    try { db()->exec("ALTER TABLE favorite_sitters ADD COLUMN notify_when_online TINYINT DEFAULT 0"); } catch(Exception $e){}
 }
 
 // ── Ensure payments table exists with all required columns ────
@@ -238,6 +270,12 @@ function getNearestSitters($lat, $lng, $radius_miles, $exclude_ids=[]){
     $stmt = db()->prepare("
         SELECT s.id, s.fname, s.lname, s.email, s.minrate, s.maxrate,
                s.city, s.state, s.image, s.about, s.bgcheck,
+               COALESCE(s.avg_rating,0)   AS avg_rating,
+               COALESCE(s.review_count,0) AS review_count,
+               COALESCE(s.badge_cpr,0)           AS badge_cpr,
+               COALESCE(s.badge_infant,0)        AS badge_infant,
+               COALESCE(s.badge_special_needs,0) AS badge_special_needs,
+               COALESCE(s.badge_multilingual,0)  AS badge_multilingual,
                u.reg_id AS device_token,
                IF(ABS(u.latitude)  > 0.001, u.latitude,  s.latitude)  AS slat,
                IF(ABS(u.longitude) > 0.001, u.longitude, s.longitude) AS slng
@@ -370,6 +408,7 @@ $action = $_GET['action'] ?? ($body['action'] ?? '');
 ensureExtraColumns();
 ensurePaymentsTable();
 ensurePayoutTable();     // ensures payout_requests table exists for admin_stats
+ensureChildrenTable();   // child safety profiles
 autoCancelNoShows();     // cancel stale no-show scheduled jobs (>1 hr past scheduled_time)
 
 try {
@@ -419,6 +458,28 @@ switch ($action) {
             run("UPDATE sitters SET latitude=?, longitude=? WHERE id=?",
                 [$lat, $lng, $sitter_id]);
         }
+
+        // Notify parents who have "notify when online" set for this sitter
+        if ($online === 1) {
+            try {
+                ensureFavoritesTable();
+                $sitterRow = row("SELECT CONCAT(fname,' ',lname) AS sname FROM sitters WHERE id=?", [$sitter_id]);
+                $sName = $sitterRow['sname'] ?? 'Your favorite sitter';
+                $watchers = rows("
+                    SELECT p.push_token
+                    FROM favorite_sitters fs
+                    JOIN parents p ON p.id = fs.parent_id
+                    WHERE fs.sitter_id=? AND fs.notify_when_online=1 AND p.push_token IS NOT NULL
+                ", [$sitter_id]);
+                foreach ($watchers as $w) {
+                    sendExpoPush($w['push_token'],
+                        '🟢 ' . $sName . ' is Online!',
+                        $sName . ' just went online and is available for bookings. Tap to book now.',
+                        ['type' => 'favorite_online', 'sitter_id' => $sitter_id]);
+                }
+            } catch (Exception $e) { /* non-critical */ }
+        }
+
         ok(['online' => $online, 'sitter_id' => $sitter_id],
             $online ? 'You are now online' : 'You are now offline');
 
@@ -1498,6 +1559,76 @@ switch ($action) {
         }
         ok([], 'Scheduled appointment cancelled');
 
+    // ── GET CHILD PROFILES ───────────────────────────────────────
+    // Returns all active children for a parent (or the parent of a job, for sitters)
+    case 'get_child_profiles':
+        $parent_id = (int)($body['parent_id'] ?? 0);
+        $job_id    = (int)($body['job_id']    ?? 0);
+        // Allow sitter to fetch via job_id (gets that job's parent's children)
+        if (!$parent_id && $job_id) {
+            $jr = row("SELECT parent_id FROM jobs WHERE id=?", [$job_id]);
+            $parent_id = $jr ? (int)$jr['parent_id'] : 0;
+        }
+        if (!$parent_id) err('Missing parent_id');
+        $kids = rows("
+            SELECT id, name, age, allergies, medical_notes, bedtime_routine,
+                   emergency_contact_name, emergency_contact_phone, special_needs
+            FROM children
+            WHERE parent_id=? AND is_active=1
+            ORDER BY name ASC
+        ", [$parent_id]);
+        $kids = array_map(function($k) {
+            $k['allergies'] = !empty($k['allergies']) ? (json_decode($k['allergies'],true) ?: []) : [];
+            return $k;
+        }, $kids);
+        ok($kids, count($kids).' child(ren)');
+
+    // ── SAVE CHILD PROFILE ───────────────────────────────────────
+    // Creates or updates a child profile for a parent
+    case 'save_child_profile':
+        $parent_id  = (int)($body['parent_id'] ?? 0);
+        $child_id   = (int)($body['child_id']  ?? 0);
+        $name       = trim($body['name']       ?? '');
+        $age        = isset($body['age']) ? (int)$body['age'] : null;
+        $allergies  = isset($body['allergies']) && is_array($body['allergies'])
+                      ? json_encode($body['allergies']) : '[]';
+        $med_notes  = trim($body['medical_notes']           ?? '');
+        $bedtime    = trim($body['bedtime_routine']         ?? '');
+        $ec_name    = trim($body['emergency_contact_name']  ?? '');
+        $ec_phone   = trim($body['emergency_contact_phone'] ?? '');
+        $special    = trim($body['special_needs']           ?? '');
+        if (!$parent_id) err('Missing parent_id');
+        if (!$name)      err('Child name is required');
+        if ($child_id) {
+            // Update existing — verify ownership
+            $existing = row("SELECT id FROM children WHERE id=? AND parent_id=?", [$child_id, $parent_id]);
+            if (!$existing) err('Child profile not found');
+            run("UPDATE children SET name=?, age=?, allergies=?, medical_notes=?,
+                 bedtime_routine=?, emergency_contact_name=?, emergency_contact_phone=?, special_needs=?
+                 WHERE id=?",
+                [$name, $age, $allergies, $med_notes ?: null,
+                 $bedtime ?: null, $ec_name ?: null, $ec_phone ?: null, $special ?: null, $child_id]);
+            ok(['child_id' => $child_id], 'Child profile updated');
+        } else {
+            // Insert new
+            run("INSERT INTO children (parent_id, name, age, allergies, medical_notes,
+                 bedtime_routine, emergency_contact_name, emergency_contact_phone, special_needs)
+                 VALUES (?,?,?,?,?,?,?,?,?)",
+                [$parent_id, $name, $age, $allergies, $med_notes ?: null,
+                 $bedtime ?: null, $ec_name ?: null, $ec_phone ?: null, $special ?: null]);
+            ok(['child_id' => (int)db()->lastInsertId()], 'Child profile created');
+        }
+
+    // ── DELETE CHILD PROFILE ─────────────────────────────────────
+    case 'delete_child_profile':
+        $parent_id = (int)($body['parent_id'] ?? 0);
+        $child_id  = (int)($body['child_id']  ?? 0);
+        if (!$parent_id || !$child_id) err('Missing fields');
+        $existing = row("SELECT id FROM children WHERE id=? AND parent_id=?", [$child_id, $parent_id]);
+        if (!$existing) err('Child profile not found');
+        run("UPDATE children SET is_active=0 WHERE id=?", [$child_id]);
+        ok([], 'Child profile removed');
+
     // ── UPDATE SITTER PROFILE ─────────────────────────────────
     // Sitter updates rates, bio, work distance, additional child rate.
     // Name changes are NOT allowed here — must go through customer support.
@@ -1508,6 +1639,10 @@ switch ($action) {
         $additional_child_rate = (float)($body['additional_child_rate'] ?? 0);
         $work_distance         = (int)($body['work_distance']         ?? 10);
         $about                 = trim($body['about']                  ?? '');
+        $badge_cpr             = isset($body['badge_cpr'])           ? (int)$body['badge_cpr']           : null;
+        $badge_infant          = isset($body['badge_infant'])        ? (int)$body['badge_infant']        : null;
+        $badge_special_needs   = isset($body['badge_special_needs']) ? (int)$body['badge_special_needs'] : null;
+        $badge_multilingual    = isset($body['badge_multilingual'])  ? (int)$body['badge_multilingual']  : null;
 
         if (!$sitter_id) err('Missing sitter_id');
         if ($minrate <= 0) err('Minimum rate must be greater than $0/hr');
@@ -1528,6 +1663,19 @@ switch ($action) {
             $updates[] = "about=?";
             $params[]  = $about;
         }
+        // Badge fields — only include if sent and columns exist
+        if ($badge_cpr !== null && colExists('sitters','badge_cpr')) {
+            $updates[] = "badge_cpr=?"; $params[] = $badge_cpr ? 1 : 0;
+        }
+        if ($badge_infant !== null && colExists('sitters','badge_infant')) {
+            $updates[] = "badge_infant=?"; $params[] = $badge_infant ? 1 : 0;
+        }
+        if ($badge_special_needs !== null && colExists('sitters','badge_special_needs')) {
+            $updates[] = "badge_special_needs=?"; $params[] = $badge_special_needs ? 1 : 0;
+        }
+        if ($badge_multilingual !== null && colExists('sitters','badge_multilingual')) {
+            $updates[] = "badge_multilingual=?"; $params[] = $badge_multilingual ? 1 : 0;
+        }
 
         $params[] = $sitter_id;
         run("UPDATE sitters SET " . implode(', ', $updates) . " WHERE id=?", $params);
@@ -1542,7 +1690,11 @@ switch ($action) {
 
         // Return the freshly-saved profile
         $updated = row("SELECT id, fname, lname, minrate, maxrate,
-                               additional_child_rate, work_distance, about, city, state
+                               additional_child_rate, work_distance, about, city, state,
+                               COALESCE(badge_cpr,0) AS badge_cpr,
+                               COALESCE(badge_infant,0) AS badge_infant,
+                               COALESCE(badge_special_needs,0) AS badge_special_needs,
+                               COALESCE(badge_multilingual,0) AS badge_multilingual
                         FROM sitters WHERE id=?", [$sitter_id]);
         if (!$updated) err('Could not retrieve updated profile');
         ok($updated, 'Profile updated successfully');
@@ -1916,6 +2068,18 @@ switch ($action) {
         run("DELETE FROM favorite_sitters WHERE parent_id=? AND sitter_id=?", [$parent_id, $sitter_id]);
         ok(['removed' => true], 'Sitter removed from favorites');
 
+    // ── TOGGLE NOTIFY WHEN ONLINE ───────────────────────────────
+    // Parents toggle whether they get a push when a saved sitter goes online
+    case 'toggle_notify_favorite':
+        ensureFavoritesTable();
+        $parent_id = (int)($body['parent_id'] ?? 0);
+        $sitter_id = (int)($body['sitter_id'] ?? 0);
+        $notify    = (int)($body['notify']    ?? 0); // 1 or 0
+        if (!$parent_id || !$sitter_id) err('Missing fields');
+        run("UPDATE favorite_sitters SET notify_when_online=? WHERE parent_id=? AND sitter_id=?",
+            [$notify ? 1 : 0, $parent_id, $sitter_id]);
+        ok(['notify' => $notify], $notify ? 'You will be notified when this sitter goes online' : 'Notification turned off');
+
     // ── SAVE PUSH TOKEN (called on login from app) ─────────────
     case 'save_push_token':
         $user_type = $body['user_type'] ?? ''; // 'parent' or 'sitter'
@@ -1941,8 +2105,12 @@ switch ($action) {
             SELECT s.id, s.fname, s.lname, s.minrate, s.image, s.about, s.bgcheck,
                    s.city, s.state,
                    s.experience_years, s.certifications,
-                   COALESCE(s.avg_rating,0)    AS avg_rating,
-                   COALESCE(s.review_count,0)  AS review_count,
+                   COALESCE(s.avg_rating,0)          AS avg_rating,
+                   COALESCE(s.review_count,0)        AS review_count,
+                   COALESCE(s.badge_cpr,0)           AS badge_cpr,
+                   COALESCE(s.badge_infant,0)        AS badge_infant,
+                   COALESCE(s.badge_special_needs,0) AS badge_special_needs,
+                   COALESCE(s.badge_multilingual,0)  AS badge_multilingual,
                    u.online, u.latitude, u.longitude,
                    CASE
                      WHEN s.dob IS NOT NULL AND s.dob != '' AND s.dob != '0000-00-00'
@@ -2045,7 +2213,8 @@ switch ($action) {
                    COALESCE(s.avg_rating,0) AS avg_rating,
                    COALESCE(s.review_count,0) AS review_count,
                    u.online, u.latitude, u.longitude,
-                   fs.created_at AS saved_at
+                   fs.created_at AS saved_at,
+                   COALESCE(fs.notify_when_online,0) AS notify_when_online
             FROM favorite_sitters fs
             JOIN sitters s ON s.id = fs.sitter_id
             LEFT JOIN `user` u ON u.u_id = s.id AND u.user_type='sitter'

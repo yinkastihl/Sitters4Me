@@ -231,6 +231,32 @@ export default function SitterProfileView() {
                 </View>
               )}
             </View>
+
+            {/* Specialization badges */}
+            {(profile.badge_cpr == 1 || profile.badge_infant == 1 || profile.badge_special_needs == 1 || profile.badge_multilingual == 1) && (
+              <View style={[s.badgesRow, { marginTop: 8 }]}>
+                {profile.badge_cpr == 1 && (
+                  <View style={[s.badge, s.badgeBlue]}>
+                    <Text style={[s.badgeText, { color: '#1A5FA8' }]}>❤️ CPR Certified</Text>
+                  </View>
+                )}
+                {profile.badge_infant == 1 && (
+                  <View style={[s.badge, s.badgePurple]}>
+                    <Text style={[s.badgeText, { color: '#6B3FA0' }]}>🍼 Infant Care</Text>
+                  </View>
+                )}
+                {profile.badge_special_needs == 1 && (
+                  <View style={[s.badge, s.badgeOrange]}>
+                    <Text style={[s.badgeText, { color: '#A05A00' }]}>🌟 Special Needs</Text>
+                  </View>
+                )}
+                {profile.badge_multilingual == 1 && (
+                  <View style={[s.badge, s.badgeTeal]}>
+                    <Text style={[s.badgeText, { color: '#0A7A6A' }]}>🌍 Multilingual</Text>
+                  </View>
+                )}
+              </View>
+            )}
           </View>
 
           {/* ── About ── */}
@@ -399,6 +425,10 @@ const s = StyleSheet.create({
   badgesRow:       { flexDirection: 'row', gap: 8, flexWrap: 'wrap', justifyContent: 'center' },
   badge:           { backgroundColor: '#F5F4F0', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5, borderWidth: 1, borderColor: '#E5E2DA' },
   badgeGreen:      { backgroundColor: '#D4EDE9', borderColor: '#A8D5CD' },
+  badgeBlue:       { backgroundColor: '#D6E8F8', borderColor: '#A3C8EE' },
+  badgePurple:     { backgroundColor: '#EAD9F7', borderColor: '#C4A0E8' },
+  badgeOrange:     { backgroundColor: '#FDECD0', borderColor: '#F5C880' },
+  badgeTeal:       { backgroundColor: '#D0F0EC', borderColor: '#80D5CB' },
   badgeText:       { fontSize: 13, fontWeight: '600', color: '#5A5F72' },
 
   section:         { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 16, marginBottom: 14, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2 },

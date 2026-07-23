@@ -26,6 +26,12 @@ export default function SitterProfileEdit() {
   const [workDistance,   setWorkDistance]   = useState('');
   const [about,          setAbout]          = useState('');
 
+  // Specialization badges
+  const [badgeCpr,          setBadgeCpr]          = useState(false);
+  const [badgeInfant,       setBadgeInfant]       = useState(false);
+  const [badgeSpecialNeeds, setBadgeSpecialNeeds] = useState(false);
+  const [badgeMultilingual, setBadgeMultilingual] = useState(false);
+
   // Display-only
   const displayName = `${user.fname || ''} ${user.lname || ''}`.trim() || 'Your Name';
 
@@ -44,6 +50,10 @@ export default function SitterProfileEdit() {
         setAddChildRate(String(d.additional_child_rate || '2'));
         setWorkDistance(String(d.work_distance         || '10'));
         setAbout(d.about || '');
+        setBadgeCpr(d.badge_cpr == 1 || d.badge_cpr === true);
+        setBadgeInfant(d.badge_infant == 1 || d.badge_infant === true);
+        setBadgeSpecialNeeds(d.badge_special_needs == 1 || d.badge_special_needs === true);
+        setBadgeMultilingual(d.badge_multilingual == 1 || d.badge_multilingual === true);
       } else {
         applyUserDefaults();
       }
@@ -94,6 +104,10 @@ export default function SitterProfileEdit() {
         additional_child_rate: add,
         work_distance:         dist,
         about:                 about.trim(),
+        badge_cpr:             badgeCpr ? 1 : 0,
+        badge_infant:          badgeInfant ? 1 : 0,
+        badge_special_needs:   badgeSpecialNeeds ? 1 : 0,
+        badge_multilingual:    badgeMultilingual ? 1 : 0,
       });
 
       if (res.data?.success) {
@@ -346,6 +360,34 @@ export default function SitterProfileEdit() {
             </View>
           </View>
 
+          {/* ── SPECIALIZATION BADGES ─────────────────────── */}
+          <View style={s.section}>
+            <Text style={s.sectionTitle}>Specializations</Text>
+            <Text style={s.sectionSub}>Help parents find you for their specific needs</Text>
+
+            {([
+              { key: 'cpr',           label: '❤️  CPR Certified',        desc: 'You hold a valid CPR / AED certification',      val: badgeCpr,          set: setBadgeCpr,          color: '#1A5FA8', bg: '#D6E8F8', border: '#A3C8EE' },
+              { key: 'infant',        label: '🍼  Infant Care',           desc: 'Comfortable with babies under 12 months',        val: badgeInfant,       set: setBadgeInfant,       color: '#6B3FA0', bg: '#EAD9F7', border: '#C4A0E8' },
+              { key: 'special_needs', label: '🌟  Special Needs',         desc: 'Experience with children who have special needs', val: badgeSpecialNeeds, set: setBadgeSpecialNeeds, color: '#A05A00', bg: '#FDECD0', border: '#F5C880' },
+              { key: 'multilingual',  label: '🌍  Multilingual',          desc: 'Speak more than one language',                   val: badgeMultilingual, set: setBadgeMultilingual, color: '#0A7A6A', bg: '#D0F0EC', border: '#80D5CB' },
+            ] as const).map(item => (
+              <TouchableOpacity
+                key={item.key}
+                style={[s.badgeToggleRow, item.val && { backgroundColor: item.bg, borderColor: item.border }]}
+                onPress={() => (item.set as any)(!item.val)}
+                activeOpacity={0.8}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={[s.badgeToggleLabel, item.val && { color: item.color }]}>{item.label}</Text>
+                  <Text style={s.badgeToggleDesc}>{item.desc}</Text>
+                </View>
+                <View style={[s.badgeToggleCheck, item.val && { backgroundColor: item.color, borderColor: item.color }]}>
+                  {item.val && <Text style={{ color: '#FFF', fontSize: 13, fontWeight: '900' }}>✓</Text>}
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+
           {/* ── SAVE BUTTON ───────────────────────────────── */}
           <TouchableOpacity onPress={handleSave} disabled={saving} activeOpacity={0.85} style={s.saveWrap}>
             <LinearGradient
@@ -429,6 +471,12 @@ const s = StyleSheet.create({
   chipActive:       { backgroundColor: '#02A4E2', borderColor: '#02A4E2' },
   chipTxt:          { fontSize: 13, fontWeight: '700', color: '#5A5F72' },
   chipTxtActive:    { color: '#FFFFFF' },
+
+  // Badge toggles
+  badgeToggleRow:   { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F5F4F0', borderRadius: 12, padding: 14, borderWidth: 1.5, borderColor: 'rgba(15,17,23,0.1)', gap: 12 },
+  badgeToggleLabel: { fontSize: 15, fontWeight: '700', color: '#0F1117' },
+  badgeToggleDesc:  { fontSize: 12, color: '#9B9FAE', marginTop: 2 },
+  badgeToggleCheck: { width: 28, height: 28, borderRadius: 14, borderWidth: 2, borderColor: '#D9D6CE', alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' },
 
   // Save / Cancel
   saveWrap:         { marginTop: 6 },

@@ -30,6 +30,8 @@ export default function ActiveJob() {
   const [status, setStatus]         = useState<'travelling'|'arrived'|'started'|'done'>('travelling');
   const [elapsed, setElapsed]       = useState(0);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [childProfiles, setChildProfiles]   = useState<any[]>([]);
+  const [showChildInfo, setShowChildInfo]   = useState(false);
 
   const user = global.currentUser || {};
 
@@ -142,6 +144,7 @@ export default function ActiveJob() {
           jobIdRef.current = Number(jid);
           startStatusPoll(Number(jid));
           saveActiveSession('sitter', Number(jid), user);
+          loadChildProfiles(Number(jid));
         }
       } else {
         // Use global activeJob as fallback
@@ -152,6 +155,7 @@ export default function ActiveJob() {
             jobIdRef.current = Number(jid);
             startStatusPoll(Number(jid));
             saveActiveSession('sitter', Number(jid), user);
+            loadChildProfiles(Number(jid));
           }
         }
       }
@@ -163,11 +167,19 @@ export default function ActiveJob() {
           jobIdRef.current = Number(jid);
           startStatusPoll(Number(jid));
           saveActiveSession('sitter', Number(jid), user);
+          loadChildProfiles(Number(jid));
         }
       }
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadChildProfiles = async (jobId: number) => {
+    try {
+      const res = await axios.post(`${JOBS_API}?action=get_child_profiles`, { job_id: jobId });
+      if (res.data?.success) setChildProfiles(res.data.data || []);
+    } catch { /* non-critical */ }
   };
 
   // ── Poll job_status every 6s — detect parent cancellation ────
@@ -526,6 +538,61 @@ export default function ActiveJob() {
               })()}
             </View>
 
+            {/* Children Info card — only shown if profiles exist */}
+            {childProfiles.length > 0 && (
+              <View style={s.childInfoCard}>
+                <TouchableOpacity
+                  style={s.childInfoHeader}
+                  onPress={() => setShowChildInfo(v => !v)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={s.childInfoTitle}>👶 Children Info</Text>
+                  <Text style={s.childInfoToggle}>{showChildInfo ? '▲ Hide' : '▼ Show'}</Text>
+                </TouchableOpacity>
+                {showChildInfo && childProfiles.map((child: any) => (
+                  <View key={child.id} style={s.childInfoItem}>
+                    <Text style={s.childInfoName}>
+                      {child.name}  ·  {child.age != null ? (child.age === 0 ? 'Infant' : `${child.age} yr${child.age !== 1 ? 's' : ''}`) : 'Age N/A'}
+                    </Text>
+                    {Array.isArray(child.allergies) && child.allergies.length > 0 && (
+                      <View style={s.childInfoRow}>
+                        <Text style={s.childInfoLabel}>⚠️ Allergies</Text>
+                        <Text style={[s.childInfoVal, { color: '#C0392B', fontWeight: '700' }]}>
+                          {child.allergies.join(', ')}
+                        </Text>
+                      </View>
+                    )}
+                    {!!child.medical_notes && (
+                      <View style={s.childInfoRow}>
+                        <Text style={s.childInfoLabel}>🏥 Medical</Text>
+                        <Text style={s.childInfoVal}>{child.medical_notes}</Text>
+                      </View>
+                    )}
+                    {!!child.bedtime_routine && (
+                      <View style={s.childInfoRow}>
+                        <Text style={s.childInfoLabel}>🌙 Bedtime</Text>
+                        <Text style={s.childInfoVal}>{child.bedtime_routine}</Text>
+                      </View>
+                    )}
+                    {!!child.special_needs && (
+                      <View style={s.childInfoRow}>
+                        <Text style={s.childInfoLabel}>💜 Special</Text>
+                        <Text style={s.childInfoVal}>{child.special_needs}</Text>
+                      </View>
+                    )}
+                    {!!child.emergency_contact_name && (
+                      <View style={s.childInfoRow}>
+                        <Text style={s.childInfoLabel}>🆘 Emergency</Text>
+                        <Text style={s.childInfoVal}>
+                          {child.emergency_contact_name}{child.emergency_contact_phone ? `  ${child.emergency_contact_phone}` : ''}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                ))}
+              </View>
+            )}
+
             {/* Action buttons based on status */}
             {status === 'travelling' && (
               <TouchableOpacity onPress={handleArrived} activeOpacity={0.85}>
@@ -615,6 +682,15 @@ const s = StyleSheet.create({
   textBtnText:    { color: '#02A4E2', fontSize: 13, fontWeight: '700' },
   directionsBtn:  { backgroundColor: '#F5F4F0', borderRadius: 10, padding: 12, alignItems: 'center', borderWidth: 1, borderColor: '#E5E2DA' },
   directionsBtnText: { fontSize: 14, fontWeight: '700', color: '#5A5F72' },
+  childInfoCard:   { backgroundColor: '#FFFFFF', borderRadius: 16, borderWidth: 1.5, borderColor: 'rgba(201,52,136,0.2)', overflow: 'hidden' },
+  childInfoHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 14, backgroundColor: 'rgba(201,52,136,0.06)' },
+  childInfoTitle:  { fontSize: 15, fontWeight: '800', color: '#0F1117' },
+  childInfoToggle: { fontSize: 13, fontWeight: '600', color: '#C93488' },
+  childInfoItem:   { padding: 14, borderTopWidth: 1, borderTopColor: 'rgba(15,17,23,0.07)', gap: 6 },
+  childInfoName:   { fontSize: 14, fontWeight: '800', color: '#0F1117', marginBottom: 4 },
+  childInfoRow:    { flexDirection: 'row', gap: 8, alignItems: 'flex-start' },
+  childInfoLabel:  { fontSize: 12, fontWeight: '700', color: '#9B9FAE', width: 72, flexShrink: 0 },
+  childInfoVal:    { flex: 1, fontSize: 13, color: '#3A3F52', lineHeight: 18 },
   detailCard:     { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 18, borderWidth: 1, borderColor: 'rgba(15,17,23,0.09)' },
   detailRow:      { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(15,17,23,0.07)' },
   detailLabel:    { fontSize: 13, color: '#9B9FAE', fontWeight: '600' },

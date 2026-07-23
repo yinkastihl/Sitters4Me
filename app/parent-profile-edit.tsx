@@ -232,6 +232,23 @@ export default function ParentProfileEdit() {
             </Text>
           </View>
 
+          {/* ── Children Profiles shortcut ── */}
+          <TouchableOpacity
+            onPress={() => router.push('/children-profiles')}
+            style={s.saveWrap}
+            activeOpacity={0.85}
+          >
+            <LinearGradient
+              colors={['#9B5BAB', '#7A3D8A']}
+              start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+              style={s.saveBtn}
+            >
+              <Text style={s.saveBtnText}>👶  Manage Children Profiles</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+
+          <View style={{ height: 8 }} />
+
           {/* ── Save button ── */}
           <TouchableOpacity
             onPress={saveProfile}
