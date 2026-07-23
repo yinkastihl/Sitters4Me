@@ -528,8 +528,8 @@ switch ($action) {
 
     // ── BROWSE ALL SITTERS IN AREA (online + offline) ────────
     case 'browse_sitters':
-        $lat           = (float)($body['lat']         ?? 0);
-        $lng           = (float)($body['lng']         ?? 0);
+        $pLat          = (float)($body['lat']         ?? 0);
+        $pLng          = (float)($body['lng']         ?? 0);
         $search        = trim($body['search']         ?? '');
         $online_only   = (int)($body['online_only']   ?? 0);
         $filter_cpr    = (int)($body['filter_cpr']    ?? 0);
@@ -539,18 +539,16 @@ switch ($action) {
         $limit         = min((int)($body['limit']     ?? 50), 100);
         $offset        = max((int)($body['offset']    ?? 0), 0);
 
-        // Build optional WHERE clauses — NO hard location requirement
-        // so sitters who've never gone online still appear
+        // Build WHERE clauses — NO hard location filter so every registered
+        // sitter appears even if they have never gone online.
         $where  = [];
         $params = [];
 
-        if ($online_only) {
-            $where[] = "u.online = 1";
-        }
+        if ($online_only)   { $where[] = "COALESCE(u.online,0) = 1"; }
         if ($search !== '') {
             $where[] = "(s.fname LIKE ? OR s.lname LIKE ? OR CONCAT(s.fname,' ',s.lname) LIKE ?)";
-            $like = '%' . $search . '%';
-            $params = array_merge($params, [$like, $like, $like]);
+            $like    = '%' . $search . '%';
+            $params  = array_merge($params, [$like, $like, $like]);
         }
         if ($filter_cpr)    { $where[] = "COALESCE(s.badge_cpr,0) = 1"; }
         if ($filter_infant) { $where[] = "COALESCE(s.badge_infant,0) = 1"; }
@@ -559,72 +557,87 @@ switch ($action) {
 
         $whereStr = empty($where) ? '' : 'WHERE ' . implode(' AND ', $where);
 
-        // Distance is computed only when the sitter has GPS coords (from user table).
-        // Sitters without coords get distance_away = NULL and appear after those with coords.
-        // ACOS is guarded by NULLIF + LEAST/GREATEST to prevent domain errors.
-        $distExpr = $lat && $lng
-            ? "CASE
-                 WHEN u.latitude IS NOT NULL AND u.longitude IS NOT NULL THEN
-                   3959 * ACOS(LEAST(1, GREATEST(-1,
-                     COS(RADIANS($lat)) * COS(RADIANS(u.latitude))
-                     * COS(RADIANS(u.longitude) - RADIANS($lng))
-                     + SIN(RADIANS($lat)) * SIN(RADIANS(u.latitude))
-                   )))
-                 ELSE NULL
-               END"
-            : "NULL";
-
-        // Wrap in try-catch so any SQL error surfaces as a readable message
-        // instead of silently returning an empty list to the parent.
+        // Simple query — NO distance math in SQL.
+        // We fetch raw lat/lng and compute Haversine in PHP (same approach
+        // as getNearestSitters) to avoid any ACOS / domain / syntax issues.
         try {
             $stmt = db()->prepare("
                 SELECT s.id,
                        s.fname, s.lname,
-                       COALESCE(s.minrate, 15)              AS minrate,
+                       COALESCE(s.minrate, 15)             AS minrate,
                        s.about,
                        s.image, s.bgcheck,
                        s.experience_years,
-                       COALESCE(s.avg_rating,0)             AS avg_rating,
-                       COALESCE(s.review_count,0)           AS review_count,
-                       COALESCE(s.badge_cpr,0)              AS badge_cpr,
-                       COALESCE(s.badge_infant,0)           AS badge_infant,
-                       COALESCE(s.badge_special_needs,0)    AS badge_special_needs,
-                       COALESCE(s.badge_multilingual,0)     AS badge_multilingual,
-                       COALESCE(s.checkr_status,'pending')  AS checkr_status,
+                       COALESCE(s.avg_rating,0)            AS avg_rating,
+                       COALESCE(s.review_count,0)          AS review_count,
+                       COALESCE(s.badge_cpr,0)             AS badge_cpr,
+                       COALESCE(s.badge_infant,0)          AS badge_infant,
+                       COALESCE(s.badge_special_needs,0)   AS badge_special_needs,
+                       COALESCE(s.badge_multilingual,0)    AS badge_multilingual,
+                       COALESCE(s.checkr_status,'pending') AS checkr_status,
                        s.city, s.state,
-                       COALESCE(u.online,0)                 AS online,
-                       $distExpr                            AS distance_away
+                       COALESCE(u.online,0)                AS online,
+                       u.latitude                          AS u_lat,
+                       u.longitude                         AS u_lng
                 FROM sitters s
-                LEFT JOIN \`user\` u ON u.u_id = s.id AND u.user_type = 'sitter'
+                LEFT JOIN `user` u ON u.u_id = s.id AND u.user_type = 'sitter'
                 $whereStr
-                ORDER BY
-                    COALESCE(u.online,0) DESC,
-                    (distance_away IS NULL) ASC,
-                    distance_away ASC,
-                    COALESCE(s.avg_rating,0) DESC
+                ORDER BY COALESCE(u.online,0) DESC, COALESCE(s.avg_rating,0) DESC
                 LIMIT $limit OFFSET $offset
             ");
-
             $stmt->execute($params);
-            $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (Exception $e) {
             err('browse_sitters query failed: ' . $e->getMessage());
         }
 
-        // Cast numeric fields
-        $results = array_map(function($r) {
-            $r['id']            = (int)$r['id'];
-            $r['minrate']       = (float)$r['minrate'];
-            $r['avg_rating']    = (float)$r['avg_rating'];
-            $r['review_count']  = (int)$r['review_count'];
-            $r['online']        = (int)$r['online'];
-            $r['distance_away'] = $r['distance_away'] !== null ? round((float)$r['distance_away'], 1) : null;
+        // ── Haversine distance in PHP ─────────────────────────────
+        $results = [];
+        foreach ($rows as $r) {
+            $sLat = (float)($r['u_lat'] ?? 0);
+            $sLng = (float)($r['u_lng'] ?? 0);
+
+            if ($sLat && $sLng && $pLat && $pLng) {
+                $dLat  = deg2rad($sLat - $pLat);
+                $dLng  = deg2rad($sLng - $pLng);
+                $a     = sin($dLat/2)*sin($dLat/2)
+                       + cos(deg2rad($pLat))*cos(deg2rad($sLat))
+                       * sin($dLng/2)*sin($dLng/2);
+                $dist  = 3959 * 2 * atan2(sqrt($a), sqrt(1-$a));
+                $r['distance_away'] = round($dist, 1);
+            } else {
+                $r['distance_away'] = null;
+            }
+
+            // Cast & clean
+            $r['id']                  = (int)$r['id'];
+            $r['minrate']             = (float)$r['minrate'];
+            $r['avg_rating']          = (float)$r['avg_rating'];
+            $r['review_count']        = (int)$r['review_count'];
+            $r['online']              = (int)$r['online'];
             $r['badge_cpr']           = (int)$r['badge_cpr'];
             $r['badge_infant']        = (int)$r['badge_infant'];
             $r['badge_special_needs'] = (int)$r['badge_special_needs'];
             $r['badge_multilingual']  = (int)$r['badge_multilingual'];
-            return $r;
-        }, $results);
+            unset($r['u_lat'], $r['u_lng']);
+            $results[] = $r;
+        }
+
+        // ── Sort: online first → has distance → closest → highest rated ──
+        usort($results, function($a, $b) {
+            // online first
+            if ($b['online'] !== $a['online']) return $b['online'] - $a['online'];
+            // sitters with a known distance before those without
+            $aHasDist = $a['distance_away'] !== null;
+            $bHasDist = $b['distance_away'] !== null;
+            if ($aHasDist !== $bHasDist) return $aHasDist ? -1 : 1;
+            // both have distance — sort closest first
+            if ($aHasDist && $bHasDist && $a['distance_away'] !== $b['distance_away']) {
+                return $a['distance_away'] <=> $b['distance_away'];
+            }
+            // fallback: highest rated first
+            return $b['avg_rating'] <=> $a['avg_rating'];
+        });
 
         ok($results, count($results) . ' sitter(s) found');
 
