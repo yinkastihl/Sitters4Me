@@ -493,6 +493,7 @@ export default function SitterHome() {
                 { text: '✏️ Edit Profile',       onPress: () => router.push('/sitter-profile-edit') },
                 { text: '💰 My Earnings',        onPress: () => router.push('/sitter-earnings') },
                 { text: '🏦 Direct Deposit',     onPress: () => router.push('/sitter-bank-setup') },
+                { text: '🎁 Invite & Earn $5',   onPress: () => router.push('/referral') },
                 { text: '🚪 Log Out', style: 'destructive', onPress: () => {
                     global.currentUser  = null;
                     global.activeJob    = null;
@@ -692,6 +693,18 @@ export default function SitterHome() {
           ))}
         </View>
 
+        {/* INVITE & EARN BANNER */}
+        <TouchableOpacity onPress={() => router.push('/referral')} activeOpacity={0.88} style={{ marginTop: 4 }}>
+          <LinearGradient colors={['#ED1E76', '#C93488', '#9B5BAB']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.inviteBanner}>
+            <Text style={{ fontSize: 22 }}>🎁</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={s.inviteBannerTitle}>Invite Friends & Earn $5</Text>
+              <Text style={s.inviteBannerSub}>Give $5, get $5 — share your invite code</Text>
+            </View>
+            <Text style={{ color: '#fff', fontSize: 20 }}>›</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+
       </ScrollView>
 
       {/* JOB REQUEST POPUP — ONLY shows when parent presses "Request Now" and API sends a job */}
@@ -873,6 +886,9 @@ const s = StyleSheet.create({
   quickRow:        { flexDirection: 'row', gap: 10 },
   quickBtn:        { flex: 1, backgroundColor: '#FFFFFF', borderRadius: 14, padding: 16, alignItems: 'center', gap: 6, borderWidth: 1, borderColor: 'rgba(15,17,23,0.09)', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 2 },
   quickLabel:      { fontSize: 11, fontWeight: '600', color: '#5A5F72', textAlign: 'center' },
+  inviteBanner:    { borderRadius: 14, paddingVertical: 12, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  inviteBannerTitle:{ color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
+  inviteBannerSub: { color: 'rgba(255,255,255,0.85)', fontSize: 12, marginTop: 1 },
   overlay:         { position: 'absolute', inset: 0, backgroundColor: 'rgba(15,17,23,0.75)', justifyContent: 'flex-end' },
   modal:           { backgroundColor: '#FFFFFF', borderTopLeftRadius: 28, borderTopRightRadius: 28, overflow: 'hidden' },
   progTrack:       { height: 5, backgroundColor: '#EEECE7' },

@@ -44,6 +44,7 @@ export default function SitterRegister() {
   const [badgeMultilingual, setBadgeMultilingual] = useState(false);
   const [agreedBG, setAgreedBG]   = useState(false);
   const [agreed, setAgreed]       = useState(false);
+  const [referralCode, setReferralCode] = useState('');
 
   const next = () => {
     if (step===1) {
@@ -102,6 +103,16 @@ export default function SitterRegister() {
       if (res.data.success) {
         global.currentUser = res.data.data;
         const sitterId = res.data.data?.id;
+
+        // Apply referral code if entered — fire-and-forget
+        if (sitterId && referralCode.trim()) {
+          const JOBS_API = 'https://sitters4me.com/api/jobs.php';
+          axios.post(`${JOBS_API}?action=apply_referral_code`, {
+            code:         referralCode.trim().toUpperCase(),
+            referee_type: 'sitter',
+            referee_id:   sitterId,
+          }).catch(() => {});
+        }
 
         // Save specialization badges + certifications — fire-and-forget
         if (sitterId) {
@@ -338,6 +349,21 @@ export default function SitterRegister() {
                     I agree to the <Text style={{color:'#02A4E2',fontWeight:'700'}}>Terms & Conditions</Text> and <Text style={{color:'#02A4E2',fontWeight:'700'}}>Privacy Policy</Text>
                   </Text>
                 </TouchableOpacity>
+
+                {/* Optional referral code */}
+                <View style={s.field}>
+                  <Text style={s.label}>REFERRAL CODE (OPTIONAL)</Text>
+                  <Text style={s.hint}>Got an invite code from a friend? Enter it here to earn $5 credit</Text>
+                  <TextInput
+                    style={[s.input, { textTransform: 'uppercase', letterSpacing: 3 }]}
+                    value={referralCode}
+                    onChangeText={v => setReferralCode(v.toUpperCase())}
+                    placeholder="e.g. A1B2C3D4"
+                    placeholderTextColor="#9B9FAE"
+                    autoCapitalize="characters"
+                    maxLength={12}
+                  />
+                </View>
 
                 <Btn label="Create Sitter Account" onPress={register} loading={loading} />
               </>}

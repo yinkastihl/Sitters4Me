@@ -31,7 +31,8 @@ export default function ParentRegister() {
   const [radius, setRadius]     = useState('10');
 
   // Step 3
-  const [agreed, setAgreed]     = useState(false);
+  const [agreed, setAgreed]         = useState(false);
+  const [referralCode, setReferralCode] = useState('');
 
   const next = () => {
     if (step === 1) {
@@ -65,6 +66,16 @@ export default function ParentRegister() {
         search_radius: parseInt(radius),
       });
       if (res.data.success) {
+        // Apply referral code if entered — fire-and-forget
+        const parentId = res.data.data?.id;
+        if (parentId && referralCode.trim()) {
+          const JOBS_API = 'https://sitters4me.com/api/jobs.php';
+          axios.post(`${JOBS_API}?action=apply_referral_code`, {
+            code:         referralCode.trim().toUpperCase(),
+            referee_type: 'parent',
+            referee_id:   parentId,
+          }).catch(() => {});
+        }
         Alert.alert(
           '🎉 Account Created!',
           `A verification email has been sent to:\n\n${email}\n\nPlease click the link in the email to activate your account. You can then sign in and start booking sitters immediately — no admin approval needed!`,
@@ -214,6 +225,21 @@ export default function ParentRegister() {
                     3️⃣  Sign in and start booking sitters immediately!{'\n\n'}
                     No waiting for admin approval. You're in control.
                   </Text>
+                </View>
+
+                {/* Optional referral code */}
+                <View style={s.field}>
+                  <Text style={s.label}>HAVE AN INVITE CODE? (OPTIONAL)</Text>
+                  <TextInput
+                    style={s.input}
+                    value={referralCode}
+                    onChangeText={t => setReferralCode(t.toUpperCase())}
+                    placeholder="e.g. ABC12345"
+                    placeholderTextColor="#9B9FAE"
+                    autoCapitalize="characters"
+                    maxLength={10}
+                  />
+                  <Text style={s.hint}>🎁 You and the person who invited you both get $5 credit!</Text>
                 </View>
 
                 <TouchableOpacity style={s.agreeRow} onPress={()=>setAgreed(v=>!v)}>

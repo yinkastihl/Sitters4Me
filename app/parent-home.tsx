@@ -847,35 +847,48 @@ export default function ParentHome() {
 
             {/* Schedule / History / Payment — only when no active job */}
             {!hasActiveJob && (
-              <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
-                <TouchableOpacity
-                  style={{ flex: 1 }}
-                  onPress={() => setShowScheduleModal(true)}
-                  activeOpacity={0.85}
-                >
-                  <LinearGradient colors={['#9B5BAB', '#C93488']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.schedBtn}>
-                    <Text style={s.schedBtnText}>📅 Schedule</Text>
+              <>
+                <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+                  <TouchableOpacity
+                    style={{ flex: 1 }}
+                    onPress={() => setShowScheduleModal(true)}
+                    activeOpacity={0.85}
+                  >
+                    <LinearGradient colors={['#9B5BAB', '#C93488']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.schedBtn}>
+                      <Text style={s.schedBtnText}>📅 Schedule</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={{ flex: 1 }}
+                    onPress={() => router.push('/parent-history')}
+                    activeOpacity={0.85}
+                  >
+                    <LinearGradient colors={['#1A7F6E', '#0D5C51']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.schedBtn}>
+                      <Text style={s.schedBtnText}>📋 History</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={{ flex: 1 }}
+                    onPress={() => router.push('/parent-payment-settings')}
+                    activeOpacity={0.85}
+                  >
+                    <LinearGradient colors={['#02A4E2', '#0270C8']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.schedBtn}>
+                      <Text style={s.schedBtnText}>💳 Payment</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                </View>
+                {/* Invite & Earn banner */}
+                <TouchableOpacity onPress={() => router.push('/referral')} activeOpacity={0.88} style={{ marginTop: 8 }}>
+                  <LinearGradient colors={['#ED1E76', '#C93488', '#9B5BAB']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.inviteBanner}>
+                    <Text style={s.inviteBannerEmoji}>🎁</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.inviteBannerTitle}>Invite Friends & Earn $5</Text>
+                      <Text style={s.inviteBannerSub}>Give $5, get $5 — share your invite code</Text>
+                    </View>
+                    <Text style={{ color: '#fff', fontSize: 20 }}>›</Text>
                   </LinearGradient>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={{ flex: 1 }}
-                  onPress={() => router.push('/parent-history')}
-                  activeOpacity={0.85}
-                >
-                  <LinearGradient colors={['#1A7F6E', '#0D5C51']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.schedBtn}>
-                    <Text style={s.schedBtnText}>📋 History</Text>
-                  </LinearGradient>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={{ flex: 1 }}
-                  onPress={() => router.push('/parent-payment-settings')}
-                  activeOpacity={0.85}
-                >
-                  <LinearGradient colors={['#02A4E2', '#0270C8']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.schedBtn}>
-                    <Text style={s.schedBtnText}>💳 Payment</Text>
-                  </LinearGradient>
-                </TouchableOpacity>
-              </View>
+              </>
             )}
 
             {/* UPCOMING SCHEDULED APPOINTMENTS */}
@@ -1348,6 +1361,10 @@ const s = StyleSheet.create({
   chipDist:          { fontSize: 11, color: '#9B9FAE' },
   schedBtn:          { borderRadius: 12, padding: 13, alignItems: 'center' },
   schedBtnText:      { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
+  inviteBanner:      { borderRadius: 14, paddingVertical: 12, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  inviteBannerEmoji: { fontSize: 22 },
+  inviteBannerTitle: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
+  inviteBannerSub:   { color: 'rgba(255,255,255,0.85)', fontSize: 12, marginTop: 1 },
   // Upcoming appointments
   upcomingTitle:       { fontSize: 15, fontWeight: '800', color: '#0F1117', marginTop: 18, marginBottom: 8 },
   upcomingCard:        { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 14, borderWidth: 1.5, borderColor: 'rgba(155,91,171,0.25)', marginBottom: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 3 },

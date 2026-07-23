@@ -135,6 +135,29 @@ function ensureExtraColumns(){
     // Sitter weekly availability — JSON keyed 0-6 (Sun-Sat):
     // {"0":{"on":false},"1":{"on":true,"start":"09:00","end":"18:00"}, ...}
     addCol('sitters','availability_json',    "TEXT DEFAULT NULL COMMENT 'Weekly availability schedule JSON'");
+    // Referral credits — earned when referred user registers
+    addCol('parents','referral_credits',     "DECIMAL(8,2) DEFAULT 0.00 COMMENT 'Credits earned via referrals'");
+    addCol('sitters','referral_credits',     "DECIMAL(8,2) DEFAULT 0.00 COMMENT 'Credits earned via referrals'");
+    addCol('parents','referral_code',        "VARCHAR(12) DEFAULT NULL COMMENT 'Unique invite code'");
+    addCol('sitters','referral_code',        "VARCHAR(12) DEFAULT NULL COMMENT 'Unique invite code'");
+}
+
+// ── Ensure referrals table exists ─────────────────────────────
+function ensureReferralsTable(){
+    db()->exec("CREATE TABLE IF NOT EXISTS referrals (
+        id              INT AUTO_INCREMENT PRIMARY KEY,
+        code            VARCHAR(12) NOT NULL,
+        referrer_type   ENUM('parent','sitter') NOT NULL,
+        referrer_id     INT NOT NULL,
+        referee_type    ENUM('parent','sitter') NOT NULL,
+        referee_id      INT NOT NULL,
+        credit_amount   DECIMAL(8,2) DEFAULT 5.00,
+        credits_applied TINYINT DEFAULT 0,
+        created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uk_referee (referee_type, referee_id),
+        INDEX idx_referrer (referrer_type, referrer_id),
+        INDEX idx_code (code)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 }
 
 // ── Ensure payout_requests table exists ──────────────────────
@@ -412,6 +435,7 @@ ensureExtraColumns();
 ensurePaymentsTable();
 ensurePayoutTable();     // ensures payout_requests table exists for admin_stats
 ensureChildrenTable();   // child safety profiles
+ensureReferralsTable();  // referral program
 autoCancelNoShows();     // cancel stale no-show scheduled jobs (>1 hr past scheduled_time)
 
 try {
@@ -2116,6 +2140,105 @@ switch ($action) {
         run("UPDATE favorite_sitters SET notify_when_online=? WHERE parent_id=? AND sitter_id=?",
             [$notify ? 1 : 0, $parent_id, $sitter_id]);
         ok(['notify' => $notify], $notify ? 'You will be notified when this sitter goes online' : 'Notification turned off');
+
+    // ── GET / GENERATE REFERRAL CODE ─────────────────────────────
+    case 'get_referral_code':
+        ensureReferralsTable();
+        $user_type = $body['user_type'] ?? ''; // 'parent' | 'sitter'
+        $user_id   = (int)($body['user_id'] ?? 0);
+        if (!$user_id || !in_array($user_type, ['parent','sitter'])) err('Missing user_type or user_id');
+        $table = $user_type === 'parent' ? 'parents' : 'sitters';
+
+        // Return existing code if already generated
+        $existing = row("SELECT referral_code, referral_credits FROM $table WHERE id=?", [$user_id]);
+        if (!$existing) err('User not found');
+        if (!empty($existing['referral_code'])) {
+            ok([
+                'code'    => $existing['referral_code'],
+                'credits' => (float)$existing['referral_credits'],
+                'count'   => (int)row("SELECT COUNT(*) AS c FROM referrals WHERE referrer_type=? AND referrer_id=?", [$user_type, $user_id])['c'],
+            ]);
+        }
+
+        // Generate a unique 8-char alphanumeric code
+        do {
+            $code = strtoupper(substr(bin2hex(random_bytes(5)), 0, 8));
+            $taken = row("SELECT id FROM parents WHERE referral_code=?", [$code])
+                  ?? row("SELECT id FROM sitters WHERE referral_code=?", [$code]);
+        } while ($taken);
+
+        run("UPDATE $table SET referral_code=? WHERE id=?", [$code, $user_id]);
+        ok([
+            'code'    => $code,
+            'credits' => 0.00,
+            'count'   => 0,
+        ], 'Referral code generated');
+
+    // ── APPLY REFERRAL CODE (called at registration) ──────────────
+    case 'apply_referral_code':
+        ensureReferralsTable();
+        $code         = strtoupper(trim($body['code']          ?? ''));
+        $referee_type = $body['referee_type'] ?? ''; // 'parent' | 'sitter'
+        $referee_id   = (int)($body['referee_id'] ?? 0);
+        if (!$code || !$referee_id || !in_array($referee_type, ['parent','sitter'])) err('Missing fields');
+
+        // Find the referrer
+        $referrerP = row("SELECT id FROM parents WHERE referral_code=?", [$code]);
+        $referrerS = row("SELECT id FROM sitters WHERE referral_code=?", [$code]);
+        if (!$referrerP && !$referrerS) err('Invalid referral code');
+
+        $referrer_type = $referrerP ? 'parent' : 'sitter';
+        $referrer_id   = $referrerP ? (int)$referrerP['id'] : (int)$referrerS['id'];
+
+        // Prevent self-referral
+        if ($referrer_type === $referee_type && $referrer_id === $referee_id) err('You cannot refer yourself');
+
+        // One referral per new user
+        $already = row("SELECT id FROM referrals WHERE referee_type=? AND referee_id=?", [$referee_type, $referee_id]);
+        if ($already) err('A referral has already been applied to this account');
+
+        $credit = 5.00;
+
+        // Insert referral record
+        run("INSERT INTO referrals (code, referrer_type, referrer_id, referee_type, referee_id, credit_amount, credits_applied)
+             VALUES (?, ?, ?, ?, ?, ?, 1)",
+            [$code, $referrer_type, $referrer_id, $referee_type, $referee_id, $credit]);
+
+        // Credit both parties immediately
+        $refTable = $referrer_type === 'parent' ? 'parents' : 'sitters';
+        $eeTable  = $referee_type  === 'parent' ? 'parents' : 'sitters';
+        run("UPDATE $refTable SET referral_credits = referral_credits + ? WHERE id=?", [$credit, $referrer_id]);
+        run("UPDATE $eeTable  SET referral_credits = referral_credits + ? WHERE id=?", [$credit, $referee_id]);
+
+        // Push notify the referrer
+        $refRow = row("SELECT push_token, fname FROM $refTable WHERE id=?", [$referrer_id]);
+        if (!empty($refRow['push_token'])) {
+            sendPush(
+                $refRow['push_token'],
+                '🎉 Someone used your invite code!',
+                "You earned \$$credit credit on Sitters4Me. Keep sharing!",
+                ['type' => 'referral_credit', 'amount' => $credit]
+            );
+        }
+        ok(['credit_earned' => $credit], "Referral applied! You earned \$$credit credit");
+
+    // ── GET REFERRAL STATS ────────────────────────────────────────
+    case 'get_referral_stats':
+        ensureReferralsTable();
+        $user_type = $body['user_type'] ?? '';
+        $user_id   = (int)($body['user_id'] ?? 0);
+        if (!$user_id || !in_array($user_type, ['parent','sitter'])) err('Missing fields');
+        $table = $user_type === 'parent' ? 'parents' : 'sitters';
+        $user  = row("SELECT referral_code, referral_credits FROM $table WHERE id=?", [$user_id]);
+        if (!$user) err('User not found');
+        $refs  = rows("SELECT referee_type, created_at FROM referrals WHERE referrer_type=? AND referrer_id=?
+                        ORDER BY created_at DESC", [$user_type, $user_id]);
+        ok([
+            'code'          => $user['referral_code'] ?? null,
+            'credits'       => (float)($user['referral_credits'] ?? 0),
+            'referral_count'=> count($refs),
+            'referrals'     => $refs,
+        ]);
 
     // ── SAVE PUSH TOKEN (called on login from app) ─────────────
     case 'save_push_token':
