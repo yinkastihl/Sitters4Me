@@ -27,13 +27,16 @@ const SOUNDS = {
 
 export default function SitterHome() {
   const router   = useRouter();
-  const countRef      = useRef<any>(null);
-  const pollRef       = useRef<any>(null);
-  const cancelPollRef = useRef<any>(null);
-  const soundLoopRef  = useRef<any>(null);
-  const progAnim      = useRef(new Animated.Value(1)).current;
-  const modalRef      = useRef(false);
-  const warnedRef     = useRef(false);
+  const countRef         = useRef<any>(null);
+  const pollRef          = useRef<any>(null);
+  const cancelPollRef    = useRef<any>(null);
+  const soundLoopRef     = useRef<any>(null);
+  const progAnim         = useRef(new Animated.Value(1)).current;
+  const modalRef         = useRef(false);
+  const warnedRef        = useRef(false);
+  // Holds a stable ref to checkForJobs so useFocusEffect (defined earlier
+  // in the file than checkForJobs) can call it on notification-driven focus.
+  const checkForJobsRef  = useRef<() => void>(() => {});
 
   // keepAudioSessionActive:true holds the iOS audio session open between plays
   const ringPlayer   = useAudioPlayer(SOUNDS.jobRequest,    { keepAudioSessionActive: true });
@@ -61,6 +64,13 @@ export default function SitterHome() {
       setProfileVersion(v => v + 1);
       const aj = (global as any).activeJob;
       setHasActiveJob(!!(aj?.job_id));
+
+      // If the sitter tapped a push-notification job request, trigger an
+      // immediate check_incoming call rather than waiting for the 3-s poll.
+      if ((global as any).pendingJobNotification) {
+        (global as any).pendingJobNotification = null; // consume once
+        setTimeout(() => checkForJobsRef.current(), 300);
+      }
     }, [])
   );
 
@@ -171,6 +181,8 @@ export default function SitterHome() {
       }
     } catch {}
   };
+  // Keep the ref up to date so useFocusEffect can call it before polling starts
+  checkForJobsRef.current = checkForJobs;
 
   // ── Scheduled booking request — no countdown, sitter decides at leisure ──
   const showScheduledJobPopup = (job: any) => {

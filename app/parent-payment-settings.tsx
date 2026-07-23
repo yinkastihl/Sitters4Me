@@ -22,16 +22,18 @@ export default function ParentPaymentSettings() {
   const router = useRouter();
   const user   = global.currentUser || {};
 
-  const [loading, setLoading]     = useState(false);
-  const [hasCard, setHasCard]     = useState(false);
-  const [cardInfo, setCardInfo]   = useState<any>(null);
-  const [checking, setChecking]   = useState(true);
-  const [history, setHistory]     = useState<any[]>([]);
+  const [loading, setLoading]         = useState(false);
+  const [hasCard, setHasCard]         = useState(false);
+  const [cardInfo, setCardInfo]       = useState<any>(null);
+  const [checking, setChecking]       = useState(true);
+  const [history, setHistory]         = useState<any[]>([]);
   const [histLoading, setHistLoading] = useState(false);
+  const [referralCredits, setReferralCredits] = useState(0);
 
   useEffect(() => {
     checkPaymentMethod();
     loadPaymentHistory();
+    loadReferralCredits();
   }, []);
 
   // ── Check if parent already has a saved card ──────────────────
@@ -71,6 +73,18 @@ export default function ParentPaymentSettings() {
     } finally {
       setHistLoading(false);
     }
+  };
+
+  // ── Load referral credit balance ──────────────────────────────
+  const loadReferralCredits = async () => {
+    if (!user.id) return;
+    try {
+      const res = await axios.post(`https://sitters4me.com/api/jobs.php?action=get_referral_code`, {
+        user_type: 'parent',
+        user_id:   user.id,
+      });
+      if (res.data?.success) setReferralCredits(parseFloat(res.data.data?.credits) || 0);
+    } catch { /* non-critical */ }
   };
 
   // ── Open Stripe card setup in browser ─────────────────────────
@@ -226,6 +240,19 @@ export default function ParentPaymentSettings() {
           )}
         </View>
 
+        {/* ── Referral credit balance ────────────────────────────── */}
+        {referralCredits > 0 && (
+          <View style={s.section}>
+            <View style={s.referralChip}>
+              <Text style={s.referralChipEmoji}>🎁</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={s.referralChipTitle}>${referralCredits.toFixed(2)} Referral Credit</Text>
+                <Text style={s.referralChipSub}>Automatically applied to the platform fee on your next booking.</Text>
+              </View>
+            </View>
+          </View>
+        )}
+
         {/* ── How payments work ──────────────────────────────────── */}
         <View style={s.section}>
           <Text style={s.sectionTitle}>How Payments Work</Text>
@@ -347,6 +374,11 @@ const s = StyleSheet.create({
   infoTitle:          { fontSize: 14, fontWeight: '700', color: '#0F1117', marginBottom: 2 },
   infoDesc:           { fontSize: 12, color: '#5A5F72', lineHeight: 18 },
 
+  // Referral credit
+  referralChip:       { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#FFF5FD', borderRadius: 14, padding: 16, borderWidth: 1, borderColor: '#F2C3E8' },
+  referralChipEmoji:  { fontSize: 26 },
+  referralChipTitle:  { fontSize: 15, fontWeight: '800', color: '#C93488', marginBottom: 2 },
+  referralChipSub:    { fontSize: 12, color: '#9B5BAB', lineHeight: 17 },
   // History
   emptyHistory:       { backgroundColor: '#FFFFFF', borderRadius: 14, padding: 20, alignItems: 'center' },
   emptyHistoryText:   { fontSize: 13, color: '#9B9FAE', textAlign: 'center', lineHeight: 20 },

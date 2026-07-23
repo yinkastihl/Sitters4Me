@@ -73,11 +73,12 @@ export default function SitterEarnings() {
   const [historyError,  setHistoryError]  = useState<string | null>(null);
 
   // Payout state
-  const [available,     setAvailable]     = useState(0);
-  const [totalPaid,     setTotalPaid]     = useState(0);
-  const [totalPending,  setTotalPending]  = useState(0);
-  const [payoutHistory, setPayoutHistory] = useState<any[]>([]);
-  const [requesting,    setRequesting]    = useState(false);
+  const [available,       setAvailable]       = useState(0);
+  const [totalPaid,       setTotalPaid]       = useState(0);
+  const [totalPending,    setTotalPending]    = useState(0);
+  const [payoutHistory,   setPayoutHistory]   = useState<any[]>([]);
+  const [requesting,      setRequesting]      = useState(false);
+  const [referralCredits, setReferralCredits] = useState(0);
 
   const loadData = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true); else setLoading(true);
@@ -134,6 +135,15 @@ export default function SitterEarnings() {
         setTotalPending(d.total_pending || 0);
         setPayoutHistory(d.requests || []);
       }
+    } catch { /* non-critical */ }
+
+    // ── Referral credit balance ────────────────────────────────
+    try {
+      const res = await axios.post(`${JOBS_API}?action=get_referral_code`, {
+        user_type: 'sitter',
+        user_id:   sitterId,
+      });
+      if (res.data?.success) setReferralCredits(parseFloat(res.data.data?.credits) || 0);
     } catch { /* non-critical */ }
 
     setLoading(false); setRefreshing(false);
@@ -273,6 +283,7 @@ export default function SitterEarnings() {
               payoutHistory={payoutHistory}
               requesting={requesting}
               requestPayout={requestPayout}
+              referralCredits={referralCredits}
             />
           )
         ) : tab === 'history' ? (
@@ -297,7 +308,7 @@ export default function SitterEarnings() {
 }
 
 // ── EARNINGS TAB ───────────────────────────────────────────────
-function EarningsTab({ weeks, nextPayDate, totalGross, totalNet, totalHours, jobCount, expanded, setExpanded, router, available, totalPaid, totalPending, payoutHistory, requesting, requestPayout }: any) {
+function EarningsTab({ weeks, nextPayDate, totalGross, totalNet, totalHours, jobCount, expanded, setExpanded, router, available, totalPaid, totalPending, payoutHistory, requesting, requestPayout, referralCredits }: any) {
   if (weeks.length === 0) {
     return (
       <View style={s.emptyBox}>
@@ -363,6 +374,15 @@ function EarningsTab({ weeks, nextPayDate, totalGross, totalNet, totalHours, job
           <Text style={s.payoutMetaItem}>✅ Paid out: {fmtMoney(totalPaid)}</Text>
           <Text style={s.payoutMetaItem}>⏳ Pending: {fmtMoney(totalPending)}</Text>
         </View>
+
+        {/* Referral credit chip — only shown when there is a non-zero balance */}
+        {referralCredits > 0 && (
+          <View style={s.referralChip}>
+            <Text style={s.referralChipText}>
+              🎁 ${referralCredits.toFixed(2)} referral credit — auto-applied to your next platform fee
+            </Text>
+          </View>
+        )}
 
         {/* Payout history */}
         {payoutHistory.length > 0 && (
@@ -734,6 +754,8 @@ const s = StyleSheet.create({
   payoutDivider:      { height:1, backgroundColor:'#F0EEE9', marginVertical:12 },
   payoutMetaRow:      { flexDirection:'row', gap:16 },
   payoutMetaItem:     { fontSize:12, color:'#5A5F72', fontWeight:'600' },
+  referralChip:       { marginTop:10, backgroundColor:'#FFF5FD', borderRadius:10, paddingHorizontal:12, paddingVertical:8, borderWidth:1, borderColor:'#F2C3E8' },
+  referralChipText:   { fontSize:12, color:'#C93488', fontWeight:'700' },
   payoutHistTitle:    { fontSize:13, fontWeight:'800', color:'#0F1117', marginTop:14, marginBottom:8 },
   payoutHistRow:      { flexDirection:'row', alignItems:'center', paddingVertical:8 },
   payoutHistAmt:      { fontSize:15, fontWeight:'800', color:'#0F1117' },
