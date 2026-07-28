@@ -1,0 +1,407 @@
+P1	(no style)	SITTERS4ME
+P2	(no style)	Babysitting Marketplace — Mobile Application
+P3	(no style)	User Requirements Specification
+P4	(no style)	For Independent Verification & Validation
+P7	Heading 1	1. Application Overview
+P8	(no style)	Sitters4Me is a real-time on-demand babysitting marketplace modelled on the Uber dispatch model. Parents can instantly request a nearby sitter or schedule one in advance. Sitters receive push-notified job offers, accept or decline in 60 seconds, and are automatically paid via Stripe when the job ends. An admin portal at sitters4me.com/admin.php provides oversight of sitters, parents, jobs, and payout requests.
+P11	Heading 1	2. Screens & Navigation
+P12	Heading 2	2.1 Welcome Screen (index)
+P13	(no style)	The app entry point. On mount it checks global.currentUser (hot restart) and a persisted session file (cold restart). If an active job session is found it routes directly to the appropriate in-job screen. Otherwise the welcome screen displays two buttons: "I'm a Parent" and "I'm a Babysitter", routing to the respective login screens.
+P15	Heading 2	2.2 Parent Login
+P16	Heading 2	2.3 Parent Registration
+P17	Heading 2	2.4 Parent Home
+P18	(no style)	The main parent screen. Shows a live Google Map with online sitters as pins, a bottom drawer for booking controls, and a top banner when a job is active.
+P20	Heading 2	2.5 Schedule Appointment
+P21	(no style)	Accessible via the Schedule button on parent-home. Full requirements listed under PH-20 to PH-22 above.
+P22	Heading 2	2.6 Job Accepted (Parent in-job screen)
+P23	Heading 2	2.7 Parent History
+P24	Heading 2	2.8 Parent Profile Edit
+P25	Heading 2	2.9 Parent Payment Settings
+P26	Heading 2	2.10 Parent Favorites
+P27	Heading 2	2.11 Children Profiles
+P29	Heading 1	3. Sitter Screens
+P30	Heading 2	3.1 Sitter Login
+P31	Heading 2	3.2 Sitter Registration
+P32	Heading 2	3.3 Sitter Pending
+P33	Heading 2	3.4 Sitter Home
+P34	(no style)	The sitter's main screen. Shows online/offline toggle, incoming job modals, active job banner, earnings summary, and navigation to other sitter screens.
+P36	Heading 2	3.5 Active Job (Sitter in-job screen)
+P37	Heading 2	3.6 Chat
+P38	Heading 2	3.7 Sitter Profile Edit
+P39	Heading 2	3.8 Sitter Availability
+P40	Heading 2	3.9 Sitter Bank Setup
+P41	Heading 2	3.10 Sitter Earnings
+P42	Heading 2	3.11 Sitter Browse (Parent-accessible screen)
+P43	Heading 2	3.12 Sitter Profile View (Parent-facing)
+P45	Heading 1	4. Referral Program
+P47	Heading 1	5. Password Reset
+P49	Heading 1	6. Dispatch & Job Lifecycle
+P50	Heading 2	6.1 Live Request Flow
+P51	Heading 2	6.2 Scheduled Request Flow
+P52	Heading 2	6.3 Payment & Billing
+P54	Heading 1	7. Push Notifications
+P56	Heading 1	8. Admin Portal (sitters4me.com/admin.php)
+P57	(no style)	Web-based admin portal accessible at https://sitters4me.com/admin.php. Protected by session-based authentication using the admin password.
+P59	Heading 2	8.1 Dashboard
+P60	Heading 2	8.2 Sitter Management
+P61	Heading 2	8.3 Parent Management
+P62	Heading 2	8.4 Payout Management
+P64	Heading 1	9. Security & Access Control
+P66	Heading 1	10. Suggested V&V Test Scenarios
+P67	Heading 2	10.1 Happy Path — Live Booking
+P68	List Paragraph	Parent logs in → sees online sitters on map → taps "Request a Babysitter Now"
+P69	List Paragraph	Children modal: set 2 children ages 3 and 1 → tap "Find a Sitter Now"
+P70	List Paragraph	Payment gate: verify blocked if no card; add card; retry
+P71	List Paragraph	Searching animation appears; sitter queue shown
+P72	List Paragraph	Sitter (test account) receives push notification and incoming job modal with distance and rate
+P73	List Paragraph	Sitter taps Accept → parent routed to /job-accepted with sitter info
+P74	List Paragraph	Sitter taps "On My Way" → parent status updates; "Sitter arrived" → "Start Job"
+P75	List Paragraph	Both users open chat; send messages; verify unread badges on home screens
+P76	List Paragraph	Sitter taps "End Job" → parent sees charge summary → parent rates sitter
+P77	List Paragraph	Admin portal shows job as Complete with correct charge amount
+P78	Heading 2	10.2 Happy Path — Scheduled Booking
+P79	List Paragraph	Parent taps Schedule → picks date/time >1 hour future → sets duration → confirms
+P80	List Paragraph	Upcoming appointment card appears on parent-home
+P81	List Paragraph	Advance system clock to T-30 min → sitter receives push notification with scheduled job modal
+P82	List Paragraph	Sitter accepts → status advances → parent-home detects active scheduled job → auto-navigates to /job-accepted
+P83	List Paragraph	Job proceeds and ends as per live booking flow
+P84	Heading 2	10.3 Decline / Timeout Flow
+P85	List Paragraph	Parent requests sitter → first sitter declines → second sitter in queue notified
+P86	List Paragraph	All sitters decline or 60s elapses for each → parent alerted "No Sitters Available"
+P87	List Paragraph	Parent taps Cancel during search → server receives cancel_request → sitter modal dismisses
+P88	Heading 2	10.4 Session Restore
+P89	List Paragraph	Parent has active job → force-quit and reopen app → verify routes directly to /job-accepted
+P90	List Paragraph	Sitter has active job → force-quit and reopen → verify routes directly to /active-job
+P91	List Paragraph	No active job → verify welcome screen shown
+P92	Heading 2	10.5 Admin Operations
+P93	List Paragraph	Login to admin.php → verify dashboard stats
+P94	List Paragraph	Find a pending sitter → activate account → verify sitter can now access home screen
+P95	List Paragraph	Suspend a parent with ≥3 cancellations → verify parent cannot book
+P96	List Paragraph	Sitter requests payout → admin opens payout modal → sets to Paid → verify sitter receives push notification
+P97	List Paragraph	Set Checkr status on sitter → verify badge updates on sitter profile view
+P98	Heading 2	10.6 Edge Cases
+P99	List Paragraph	Request sitter with no payment card → verify gate blocks and prompts card add
+P100	List Paragraph	Request sitter when 0 sitters online → verify "No Sitters Online" message
+P101	List Paragraph	Schedule appointment less than 1 hour from now → verify "Too Soon" error
+P102	List Paragraph	Parent attempts second booking while job active → verify blocked with "Active Job In Progress" alert
+P103	List Paragraph	Sitter goes offline mid-queue → verify server skips to next sitter
+P104	List Paragraph	Chat message sent → verify unread badge increments on recipient's home screen and resets to 0 after viewing
+P106	Heading 1	11. Technical Stack Summary
+P108	(no style)	— End of Document —
+
+[TABLE 1]
+Document Version | 1.0
+Date | July 2026
+Platform | iOS & Android (React Native / Expo SDK 54)
+Backend | PHP (jobs.php, auth.php, stripe.php) on sitters4me.com
+Purpose | Provide a complete functional specification for independent V&V testing of the Sitters4Me app in its current implemented state.
+
+[TABLE 2]
+Business model | Uber-style real-time dispatch + scheduled appointments
+User types | Parent, Sitter, Admin
+Core flow | Parent requests → nearest sitter notified → sitter accepts → job starts → job ends → auto payment
+Payment | Stripe — parent card charged automatically at job end; sitter earns net of platform fee
+Notifications | Expo push notifications for job offers, status changes, chat messages, payout updates
+Location | GPS Haversine distance calculated in PHP; map rendered with react-native-maps (Google provider)
+Session persistence | expo-file-system session file restores active jobs after full app restart
+
+[TABLE 3]
+ID | Requirement | Detail
+W-01 | Session restore — hot | If global.currentUser is set, route directly to parent-home or sitter-home based on user type.
+W-02 | Session restore — cold | If active_session.json exists in document directory with a valid jobId, route to job-accepted (parent) or active-job (sitter) without requiring login.
+W-03 | Parent entry point | "I'm a Parent" button navigates to /parent-login.
+W-04 | Sitter entry point | "I'm a Babysitter" button navigates to /sitter-login.
+W-05 | Terms acknowledgement | Terms of Service and Privacy Policy links displayed below the buttons.
+
+[TABLE 4]
+ID | Requirement | Detail
+PL-01 | Email / password login | POST to auth.php?action=parent_login. Errors display in-screen alert.
+PL-02 | Push token registration | On successful login, registerForPush() obtains an Expo push token and saves it via jobs.php?action=save_push_token (fire-and-forget).
+PL-03 | Active job restore | Before routing home, calls get_parent_active_job. If an in-progress job exists, sets global.activeJob and routes to /job-accepted.
+PL-04 | Forgot password | Tapping "Forgot password?" sets global.resetUserType="parent" and navigates to /reset-password.
+PL-05 | Register link | "Create Parent Account" navigates to /parent-register.
+PL-06 | Password toggle | Eye icon toggles password visibility.
+
+[TABLE 5]
+ID | Requirement | Detail
+PR-01 | Required fields | First name, last name, email, phone, address, city, state, ZIP, password, password confirm.
+PR-02 | Validation | All fields required; passwords must match; email format validated; minimum password length enforced.
+PR-03 | Account creation | POST to auth.php?action=parent_register. On success, logs user in and routes to parent-home.
+PR-04 | Duplicate email | Server returns an error if email already exists; displayed to user.
+
+[TABLE 6]
+ID | Requirement | Detail
+PH-01 | Live map | Google Maps renders immediately with default Houston coordinates; GPS resolves in background using two-step strategy (last known position first, then precise fix).
+PH-02 | Sitter pins | Only real database sitters shown as map pins with photo/initials, first name, and hourly rate. Pins refresh every 10 seconds silently.
+PH-03 | Search radius | Parent's search_radius preference (default 10 miles) shown as a pink circle on the map.
+PH-04 | Sitter chips | Horizontal scroll list of online sitters below the map showing photo/initials, name, rate, distance, and specialization badges (CPR, Infant, Special Needs, Multilingual).
+PH-05 | Specialization filters | Four filter chips (CPR, Infant, Special Needs, Multilingual) filter the sitter chip list. Active filters shown in dark style.
+PH-06 | Request Now button | Large gradient button shows count of online sitters. Blocked if no sitters online or active job exists.
+PH-07 | Children modal | Before dispatching, parent enters number of children (1–8) and each child's age (0=Infant to 17). This data is sent with the job request.
+PH-08 | Payment method gate | If parent has no Stripe card on file, booking is blocked with prompt to add card. Verified via stripe.php?action=get_payment_method.
+PH-09 | Dispatch & polling | POST jobs.php?action=request_live; polls job_status every 3 seconds until sitter accepts or all decline/timeout.
+PH-10 | Searching animation | Pulsing gradient circle displayed while searching. Cancel button calls cancel_request on server.
+PH-11 | Sitter queue display | While waiting, shows up to 3 sitters in the queue with Notified / Next / Queued status tags.
+PH-12 | Active job banner | Green top banner appears when hasActiveJob is true. Tapping navigates to /job-accepted. Shows unread chat badge (red) if unread messages > 0.
+PH-13 | Chat unread polling | When active job exists, polls get_unread_count every 5 seconds and displays count on banner and drawer button.
+PH-14 | Active job drawer state | When job is active the drawer shows "Job In Progress" with Return to Active Job, Schedule, History, and Payment buttons. Cannot request a new sitter.
+PH-15 | Schedule button | Opens schedule appointment modal.
+PH-16 | History button | Navigates to /parent-history.
+PH-17 | Payment button | Navigates to /parent-payment-settings.
+PH-18 | Browse Sitters button | Navigates to /sitter-browse.
+PH-19 | Invite & Earn banner | Navigates to /referral.
+PH-20 | Schedule appointment modal | Parent picks date (must be >1 hour future), time, duration (1–8 hrs in presets), number of children + ages, and optional notes. POST to schedule_job.
+PH-21 | Upcoming appointments | Scheduled jobs fetched via get_parent_scheduled every 30 seconds. Each card shows date, time, duration, children, city, sitter name (or "Awaiting"), and a Cancel button.
+PH-22 | Scheduled job auto-activate | If a scheduled job enters "Sitter arrived" or "In progress" status, app automatically navigates to /job-accepted.
+PH-23 | Profile photo | Tapping the avatar in the header opens image picker; photo uploaded to upload_photo; initials shown as fallback.
+PH-24 | Settings menu | Gear icon opens action sheet with: Edit Profile, Browse Sitters, My Favorites, Payment Settings, Log Out.
+PH-25 | Log out | Clears global.currentUser and global.activeJob; routes to /.
+PH-26 | Book Again | When global._bookAgainSitterId is set (from history screen), schedule modal opens automatically with that sitter as preferred.
+
+[TABLE 7]
+ID | Requirement | Detail
+JA-01 | Sitter info display | Shows sitter name, photo/initials, hourly rate, additional child rate, ETA, and background check badge.
+JA-02 | Job status display | Status chip shows current state: Sitter hired / Sitter on way / Sitter arrived / In progress / Complete.
+JA-03 | Elapsed timer | Once status reaches "In progress", a live timer counts up in HH:MM:SS.
+JA-04 | Estimated charge | Real-time estimated charge shown based on elapsed time and rate (including additional child rate for 2+ children).
+JA-05 | Status polling | Polls job_status every 5 seconds; updates UI and timer automatically.
+JA-06 | Chat | Chat button navigates to /chat with job_id. Unread badge shown on button.
+JA-07 | Unread count polling | Polls get_unread_count every 5 seconds; displays badge.
+JA-08 | End Job button | Sends end_job to server; shows final charge summary with duration, rate breakdown, and total. Navigates to parent-home after acknowledgement.
+JA-09 | Cancel job | Parent can cancel from this screen; calls cancel_job; navigates home.
+JA-10 | Push notification listener | Listens for sitter_arrived, job_started, job_complete push events; auto-updates status display.
+JA-11 | Rating prompt | After job completion, parent is prompted to rate the sitter 1–5 stars.
+
+[TABLE 8]
+ID | Requirement | Detail
+PHI-01 | Job list | Fetches completed/cancelled jobs via get_parent_jobs. Shows date, sitter name, duration, amount charged, status badge.
+PHI-02 | Book Again | Each past job has a "Book Again" button that pre-fills the preferred sitter ID and opens the schedule modal on parent-home.
+PHI-03 | Rating display | Shows star rating given for each completed job.
+
+[TABLE 9]
+ID | Requirement | Detail
+PPE-01 | Editable fields | First name, last name, email, phone, address, city, state, ZIP, search radius (miles).
+PPE-02 | Profile photo | Tappable circle opens image picker; uploads via upload_photo; shows current photo or initials fallback.
+PPE-03 | Children profiles link | Button navigates to /children-profiles.
+PPE-04 | Save | POST to auth.php?action=update_parent. Updates global.currentUser on success.
+
+[TABLE 10]
+ID | Requirement | Detail
+PPS-01 | View saved card | Calls stripe.php?action=get_payment_method; displays masked card number and brand if card exists.
+PPS-02 | Add / update card | Opens Stripe card input form; tokenises card and saves via stripe.php?action=save_payment_method.
+PPS-03 | Remove card | Option to remove saved card.
+PPS-04 | Payment history | Shows list of past charges with date, amount, and job reference.
+
+[TABLE 11]
+ID | Requirement | Detail
+PF-01 | Favorites list | Displays sitters the parent has favorited. Tapping a sitter navigates to /sitter-profile-view.
+PF-02 | Remove favorite | Swipe or button removes sitter from favorites list via remove_favorite endpoint.
+PF-03 | Book from favorites | Each favorite has a direct booking shortcut.
+
+[TABLE 12]
+ID | Requirement | Detail
+CP-01 | Add child profile | Parent can add children with name and date of birth.
+CP-02 | Age auto-calculation | Age displayed based on DOB.
+CP-03 | Delete child | Remove a child profile.
+
+[TABLE 13]
+ID | Requirement | Detail
+SL-01 | Email / password login | POST auth.php?action=sitter_login.
+SL-02 | Pending/inactive gate | If account status is "pending" or "inactive", routes to /sitter-pending instead of home.
+SL-03 | Push token registration | Same pattern as parent login — fire-and-forget save_push_token.
+SL-04 | Active job restore | Calls get_sitter_active_job; if in-progress job found, sets global.activeJob and routes to /active-job.
+SL-05 | Forgot password / Register | Same pattern as parent login.
+
+[TABLE 14]
+ID | Requirement | Detail
+SR-01 | Required fields | First name, last name, email, phone, address, city, state, ZIP, date of birth, hourly rate, bio/about text, password.
+SR-02 | Specializations | Checkboxes for CPR certified, Infant care, Special Needs experience, Multilingual.
+SR-03 | Account creation | POST auth.php?action=sitter_register. New accounts set to "pending" status pending admin approval.
+SR-04 | Post-registration | Routes to /sitter-pending after successful registration.
+
+[TABLE 15]
+ID | Requirement | Detail
+SP-01 | Pending message | Informs sitter their account is under review. No access to home screen.
+SP-02 | Log out | Button to log out and return to welcome screen.
+
+[TABLE 16]
+ID | Requirement | Detail
+SH-01 | Online / Offline toggle | Toggle switch sets sitter availability. POST set_online / set_offline to jobs.php. When offline, no job requests are sent to this sitter.
+SH-02 | Location update on go-online | When sitter goes online, current GPS coordinates are sent to update_sitter_location.
+SH-03 | Incoming live job modal | Full-screen modal with 60-second countdown timer showing: parent first name, number of children, child ages, distance from sitter (miles), hourly rate. Accept / Decline buttons.
+SH-04 | Incoming scheduled job modal | Same layout as live modal but also shows scheduled date/time and duration. Appears 30 minutes before the appointment.
+SH-05 | Job acceptance | POST accept_job; routes to /active-job.
+SH-06 | Job decline | POST decline_job; dismisses modal. Next sitter in queue is notified by server.
+SH-07 | Auto-decline on timeout | If sitter does not respond within 60 seconds, server auto-declines and advances queue; modal dismisses.
+SH-08 | Active job banner | Green banner visible when hasActiveJob is true; shows unread chat badge; taps to /active-job.
+SH-09 | Chat unread polling | Same 5-second poll pattern as parent-home.
+SH-10 | Earnings summary | Shows total lifetime earnings and pending balance fetched from get_sitter_earnings.
+SH-11 | Navigation shortcuts | Buttons to: Profile Edit, Availability, Bank Setup, Earnings, Job History.
+SH-12 | Push notification listener | Listens for new_job push type; opens incoming job modal when received while app is foregrounded.
+
+[TABLE 17]
+ID | Requirement | Detail
+AJ-01 | Parent info display | Shows parent name, address, number and ages of children.
+AJ-02 | Job status controls | Sitter can advance status: On My Way → Arrived → Start Job → End Job.
+AJ-03 | Status POST | Each status change POSTs update_job_status to server; parent receives push notification.
+AJ-04 | Elapsed timer | Starts when status becomes "In progress"; counts up in real time.
+AJ-05 | Estimated earnings | Live calculation shown based on elapsed time and rate.
+AJ-06 | Chat | Chat button navigates to /chat. Unread badge shown.
+AJ-07 | End Job | Calls end_job; shows earnings summary. Navigates to sitter-home after acknowledgement.
+AJ-08 | Push listener | Listens for job_cancelled push; if parent cancels, sitter is notified and routed back to sitter-home.
+
+[TABLE 18]
+ID | Requirement | Detail
+CH-01 | Message list | Fetches messages via get_messages?job_id. Shows sender name, message text, and timestamp. Scrolls to bottom on load.
+CH-02 | Send message | Text input + Send button; POST send_message with job_id, sender_type (parent/sitter), message. Appended to list optimistically.
+CH-03 | Auto-poll | Polls for new messages every 3 seconds while screen is focused.
+CH-04 | Unread mark-read | Calls mark_messages_read on focus; clears unread badge for this viewer.
+CH-05 | Push-triggered open | If a chat push notification is tapped, app navigates directly to /chat for that job_id.
+
+[TABLE 19]
+ID | Requirement | Detail
+SPE-01 | Editable fields | First name, last name, email, phone, address, city, state, ZIP, bio/about, hourly rate.
+SPE-02 | Specialization toggles | CPR, Infant, Special Needs, Multilingual — toggle switches.
+SPE-03 | Profile photo | Tappable circle opens image picker (1:1 crop, quality 0.7); base64 uploaded via upload_photo. Photo displayed with initials fallback.
+SPE-04 | Save | POST auth.php?action=update_sitter. Updates global.currentUser on success.
+
+[TABLE 20]
+ID | Requirement | Detail
+SA-01 | Weekly schedule | Sitter sets available days and time windows for each day of the week.
+SA-02 | Save availability | POSTs availability data to save_availability endpoint.
+SA-03 | Effect on dispatch | Server respects availability when choosing sitters for scheduled jobs.
+
+[TABLE 21]
+ID | Requirement | Detail
+SB-01 | Bank details entry | Sitter enters bank name, routing number, and account number.
+SB-02 | Account masking | Account number stored and displayed masked (last 4 digits only) after save.
+SB-03 | Save | POSTs to save_bank_details; details used when admin processes a payout.
+
+[TABLE 22]
+ID | Requirement | Detail
+SE-01 | Earnings summary | Total lifetime earnings, total paid out, pending balance.
+SE-02 | Transaction history | List of individual job payouts with date, amount, and job reference.
+SE-03 | Request payout | Button to request a payout for the pending balance; creates a payout_request record for admin review.
+SE-04 | Payout status | Shows status of pending payout requests (pending / approved / paid / rejected).
+
+[TABLE 23]
+ID | Requirement | Detail
+SBR-01 | Browse all sitters | Paginated list of all active sitters. Filter by specialization, rating, distance.
+SBR-02 | Search by name | Text search filters list by sitter name.
+SBR-03 | View profile | Tapping a sitter navigates to /sitter-profile-view.
+SBR-04 | Favorite | Heart icon on each card adds/removes sitter from parent's favorites.
+
+[TABLE 24]
+ID | Requirement | Detail
+SPV-01 | Profile display | Shows sitter photo, name, rating, rate, distance, bio, specialization badges, background check status.
+SPV-02 | Request Now | Triggers booking flow on parent-home for this specific sitter.
+SPV-03 | Schedule with sitter | Opens schedule modal pre-filled with this sitter as preferred.
+SPV-04 | Favorite toggle | Add/remove from parent favorites.
+SPV-05 | Reviews | Shows past parent ratings and comments.
+
+[TABLE 25]
+ID | Requirement | Detail
+RF-01 | Referral code display | Parent's unique referral code shown on /referral screen.
+RF-02 | Share | Native share sheet opens with pre-written message containing the referral code.
+RF-03 | Copy code | Copy to clipboard button (expo-clipboard).
+RF-04 | Reward tracking | Shows how many referrals used and credits earned ($5 per referred signup who books).
+
+[TABLE 26]
+ID | Requirement | Detail
+PW-01 | Request reset | Email entered on /reset-password; POST auth.php?action=request_reset sends OTP/link to email.
+PW-02 | User type routing | global.resetUserType (parent/sitter) set before navigation ensures correct account type is targeted.
+PW-03 | Set new password | OTP/token verified; new password entered and confirmed; POST auth.php?action=reset_password.
+
+[TABLE 27]
+ID | Requirement | Detail
+DJ-01 | Sitter discovery | jobs.php?action=nearby_sitters returns sitters within parent's radius ordered by Haversine distance (calculated in PHP, never SQL).
+DJ-02 | request_live | Creates a job record in "Open" status; builds a dispatch queue of nearby online available sitters ordered nearest-first; notifies first sitter via push.
+DJ-03 | Queue advancement | If sitter declines or 60 seconds elapse, server auto-advances to next sitter in queue.
+DJ-04 | Job statuses | "Open" → "Sitter hired" → "Sitter offered" → "Sitter arrived" → "In progress" → "Complete" / "Cancelled".
+DJ-05 | Distance stored | Haversine distance at dispatch time stored in job_routing.distance_mi and included in sitter's incoming job modal.
+DJ-06 | All declined | If all sitters in queue decline/timeout, job status set to "Closed"; parent alerted.
+DJ-07 | cancel_request | Parent cancelling during search closes the job and dismisses the sitter's modal if currently shown.
+
+[TABLE 28]
+ID | Requirement | Detail
+DS-01 | schedule_job | Creates job with scheduled_time, duration_hours, and optional preferred_sitter_id.
+DS-02 | 30-minute notification | Server dispatches push to available sitters 30 minutes before scheduled_time.
+DS-03 | Preferred sitter | If preferred_sitter_id set, that sitter is placed first in the queue.
+DS-04 | Parent polling | parent-home polls get_parent_scheduled every 30 seconds to update upcoming list and detect when a scheduled job goes live.
+DS-05 | Cancel scheduled | cancel_scheduled removes the job; parent list updates immediately.
+
+[TABLE 29]
+ID | Requirement | Detail
+PAY-01 | Rate calculation | charge_amt = (elapsed_hours × minrate) + max(0, kids-1) × additional_child_rate.
+PAY-02 | Auto-charge on end | end_job triggers Stripe charge to parent's saved card via stripe.php.
+PAY-03 | Sitter payout | Net earnings (after platform fee) credited to sitter's earnings balance.
+PAY-04 | Payout request | Sitter requests payout via sitter-earnings screen; admin approves and marks paid via admin portal.
+PAY-05 | Push on payout update | Sitter receives push notification when payout status changes to approved, paid, or rejected.
+
+[TABLE 30]
+ID | Requirement | Detail
+PN-01 | new_job | Sent to sitter when a job is dispatched to them. Opens incoming job modal.
+PN-02 | job_accepted | Sent to parent when a sitter accepts. Triggers route to /job-accepted.
+PN-03 | sitter_arrived | Sent to parent when sitter taps "Arrived". Updates status display.
+PN-04 | job_started | Sent to parent when sitter taps "Start Job". Starts elapsed timer.
+PN-05 | job_complete | Sent to parent when job ends. Shows charge summary.
+PN-06 | job_cancelled | Sent to sitter if parent cancels during active job.
+PN-07 | new_chat_message | Sent to the other party on each chat message. Tapping routes to /chat.
+PN-08 | payout_update | Sent to sitter when admin changes payout request status.
+PN-09 | Token storage | Expo push tokens stored per user type in the database; updated on each login.
+PN-10 | Expo Go exclusion | Push token registration skipped in Expo Go (Constants.appOwnership === "expo").
+
+[TABLE 31]
+ID | Requirement | Detail
+AD-01 | Stats cards | Shows total parents, total sitters, jobs today, jobs this month, open jobs now, total revenue this month.
+AD-02 | Auto-refresh | Stats refresh every 60 seconds automatically.
+AD-03 | Recent jobs table | Lists most recent 20 jobs with ID, parent, sitter, status, amount, and date.
+
+[TABLE 32]
+ID | Requirement | Detail
+AS-01 | Sitter list | Paginated table with name, email, Checkr background check status, online/offline indicator, rating, completed job count, and account status.
+AS-02 | Search | Text search filters sitters by name or email.
+AS-03 | Edit sitter | Modal to set: Checkr status (pending/clear/consider/suspended), is_active (active/suspended), admin notes.
+AS-04 | Save changes | POST jobs.php?action=admin_update_sitter; updates database record.
+AS-05 | Activate / Suspend | Setting is_active to "suspended" blocks sitter from going online or receiving jobs.
+
+[TABLE 33]
+ID | Requirement | Detail
+AP-01 | Parent list | Paginated table with name, email, job count, cancellation count (warning flag if ≥3), and status.
+AP-02 | Edit parent | Modal to set: is_active, cancel_count, admin notes.
+AP-03 | Suspend parent | Setting is_active to "suspended" blocks parent from making new bookings.
+
+[TABLE 34]
+ID | Requirement | Detail
+APO-01 | Payout list | Paginated table showing ID, sitter name, amount, bank name, masked account number (last 4 digits), request date, and current status.
+APO-02 | Status filter | Dropdown filters list by status: pending / approved / paid / rejected.
+APO-03 | Process payout | "Process" button opens modal with full bank details, status selector (approved/paid/rejected), and admin notes field.
+APO-04 | Save payout status | POST admin_update_payout; sets paid_at timestamp when status set to "paid"; sends push notification to sitter.
+APO-05 | Completed payouts | Paid and rejected payouts show "Done" instead of a Process button.
+
+[TABLE 35]
+ID | Requirement | Detail
+SEC-01 | Admin portal auth | Session-based password authentication on admin.php. All admin API actions require valid session.
+SEC-02 | Parent API isolation | Parent endpoints validate parent_id against authenticated session to prevent cross-user data access.
+SEC-03 | Sitter API isolation | Sitter endpoints validate sitter_id. Sitter ID always resolved as user.id || user.u_id.
+SEC-04 | Stripe PCI | Card numbers never touch the app server — tokenised via Stripe SDK before any server call.
+SEC-05 | Account masking | Bank account numbers stored and displayed as last-4-digits only.
+SEC-06 | Background check | Checkr background check status controlled exclusively by admin; sitters cannot self-verify.
+SEC-07 | Account approval | Sitter accounts start as "pending"; only admin can activate to allow login to home screen.
+
+[TABLE 36]
+Framework | Expo SDK ~54 / React Native 0.81.5
+Router | Expo Router ~6 (file-based routing)
+Language | TypeScript
+Maps | react-native-maps with Google Maps provider
+Location | expo-location (foreground permissions)
+Push | expo-notifications with Expo push API
+Payments | Stripe (stripe.php on server)
+HTTP client | axios
+Image picker | expo-image-picker
+Clipboard | expo-clipboard ~8.0.8
+Date picker | @react-native-community/datetimepicker
+Persistence | expo-file-system (active_session.json)
+Backend API | PHP with PDO/MariaDB on sitters4me.com
+Distance calc | Haversine in PHP (never in SQL)
+Auth | Session-based (PHP sessions) for admin; token-based global state for mobile

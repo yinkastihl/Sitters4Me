@@ -3167,6 +3167,84 @@ switch ($action) {
         $name = trim($parent['fname'] . ' ' . $parent['lname']);
         ok(['parent_id' => $parent_id], "Parent $name updated.");
 
+    // ── ADMIN: LIST PAYOUT REQUESTS ───────────────────────────────
+    case 'admin_list_payouts':
+        $ak = $body['admin_key'] ?? ($_GET['admin_key'] ?? '');
+        if ($ak !== 'S4M_Admin_2026!') err('Unauthorized');
+        ensurePayoutTable();
+
+        $status  = trim($body['status'] ?? ($_GET['status'] ?? 'all'));
+        $page    = max(1, (int)($body['page'] ?? ($_GET['page'] ?? 1)));
+        $perPage = 25;
+        $offset  = ($page - 1) * $perPage;
+
+        $where  = $status !== 'all' ? "WHERE pr.status = '$status'" : '';
+        $total  = row("SELECT COUNT(*) AS c FROM payout_requests pr $where", [])['c'];
+
+        $rows = rows("
+            SELECT pr.id, pr.sitter_id, pr.amount, pr.status, pr.method,
+                   pr.requested_at, pr.paid_at, pr.admin_notes,
+                   s.fname, s.lname, s.email,
+                   s.bank_name, s.routing_number, s.account_number
+            FROM payout_requests pr
+            INNER JOIN sitters s ON s.id = pr.sitter_id
+            $where
+            ORDER BY pr.requested_at DESC
+            LIMIT $perPage OFFSET $offset
+        ", []);
+
+        // Mask account numbers for security
+        foreach ($rows as &$r) {
+            $r['account_masked'] = $r['account_number']
+                ? '****' . substr($r['account_number'], -4)
+                : '—';
+            unset($r['account_number']);
+        }
+
+        ok([
+            'payouts'     => $rows,
+            'total'       => (int)$total,
+            'page'        => $page,
+            'per_page'    => $perPage,
+            'total_pages' => (int)ceil($total / $perPage),
+        ]);
+
+    // ── ADMIN: APPROVE / MARK PAYOUT PAID ────────────────────────
+    case 'admin_update_payout':
+        $ak = $body['admin_key'] ?? '';
+        if ($ak !== 'S4M_Admin_2026!') err('Unauthorized');
+        ensurePayoutTable();
+
+        $payout_id = (int)($body['payout_id'] ?? 0);
+        if (!$payout_id) err('Missing payout_id');
+
+        $newStatus = trim($body['status'] ?? '');
+        if (!in_array($newStatus, ['approved', 'paid', 'rejected'])) err('Invalid status');
+
+        $notes = trim($body['admin_notes'] ?? '');
+        $paidSql = ($newStatus === 'paid') ? ', paid_at=NOW()' : '';
+        run("UPDATE payout_requests SET status=?, admin_notes=?{$paidSql} WHERE id=?",
+            [$newStatus, $notes, $payout_id]);
+
+        // Notify sitter
+        $pr = row("SELECT pr.*, s.fname, u.reg_id AS push_token
+                   FROM payout_requests pr
+                   INNER JOIN sitters s ON s.id = pr.sitter_id
+                   LEFT JOIN `user` u ON u.u_id = pr.sitter_id AND u.user_type='sitter'
+                   WHERE pr.id=?", [$payout_id]);
+        if ($pr && !empty($pr['push_token'])) {
+            $msgMap = [
+                'approved' => ['💸 Payout Approved!', 'Your payout of $'.number_format($pr['amount'],2).' has been approved and will arrive within 1 business day.'],
+                'paid'     => ['✅ Payout Sent!',     'Your payout of $'.number_format($pr['amount'],2).' has been sent to your bank account.'],
+                'rejected' => ['❌ Payout Rejected',  'Your payout request of $'.number_format($pr['amount'],2).' was rejected. Please contact support.'],
+            ];
+            [$title, $body_msg] = $msgMap[$newStatus] ?? ['Payout Update', 'Your payout status has been updated.'];
+            sendExpoPush($pr['push_token'], $title, $body_msg,
+                ['type' => 'payout_update', 'status' => $newStatus, 'amount' => $pr['amount']]);
+        }
+
+        ok(['payout_id' => $payout_id, 'status' => $newStatus], "Payout #$payout_id marked as $newStatus.");
+
     default:
         err('Unknown action: ' . $action);
 }

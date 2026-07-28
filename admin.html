@@ -5,372 +5,238 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sitters4Me — Admin Portal</title>
 <style>
-  :root {
-    --primary:#6C63FF; --primary-dark:#574fd6;
-    --danger:#e74c3c;  --success:#27ae60;
-    --warning:#f39c12; --info:#2980b9;
-    --bg:#f4f6fb; --card:#fff; --border:#e0e4ef;
-    --text:#1a1a2e; --muted:#6b7280; --radius:10px;
-  }
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);font-size:14px}
-
-  /* LOGIN */
-  .login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;
-    background:linear-gradient(135deg,#6C63FF,#48d4c7)}
-  .login-box{background:#fff;border-radius:16px;padding:48px 40px;width:360px;
-    box-shadow:0 8px 40px rgba(0,0,0,.15);text-align:center}
-  .login-box h1{font-size:22px;font-weight:700;margin-bottom:6px;color:var(--primary)}
-  .login-box p{color:var(--muted);margin-bottom:28px;font-size:13px}
-  .login-box input{width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:var(--radius);
-    font-size:14px;margin-bottom:12px;outline:none;transition:border .2s}
-  .login-box input:focus{border-color:var(--primary)}
-  .login-box button{width:100%;padding:13px;background:var(--primary);color:#fff;border:none;
-    border-radius:var(--radius);font-size:15px;font-weight:600;cursor:pointer;transition:background .2s}
-  .login-box button:hover{background:var(--primary-dark)}
-  .login-error{color:var(--danger);font-size:13px;margin-bottom:10px;min-height:20px}
-
-  /* TOPBAR */
-  .topbar{background:var(--primary);color:#fff;padding:14px 28px;display:flex;
-    align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;
-    box-shadow:0 2px 8px rgba(0,0,0,.15)}
-  .topbar h1{font-size:17px;font-weight:700}
-  .topbar-right{display:flex;align-items:center;gap:16px}
-  .topbar a{color:rgba(255,255,255,.8);text-decoration:none;font-size:13px;cursor:pointer}
-  .topbar a:hover{color:#fff}
-
-  /* TABS */
-  .tab-bar{background:#fff;border-bottom:2px solid var(--border);padding:0 28px;display:flex;gap:0}
-  .tab-btn{padding:13px 22px;font-size:14px;font-weight:600;cursor:pointer;border:none;
-    background:none;color:var(--muted);border-bottom:3px solid transparent;margin-bottom:-2px;
-    transition:all .2s}
-  .tab-btn:hover{color:var(--primary)}
-  .tab-btn.active{color:var(--primary);border-bottom-color:var(--primary)}
-
-  .main{max-width:1340px;margin:0 auto;padding:24px 20px}
-
-  /* STATS */
-  .stats-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-bottom:24px}
-  .stat-card{background:var(--card);border-radius:var(--radius);padding:16px;
-    box-shadow:0 1px 4px rgba(0,0,0,.06);border:1px solid var(--border);text-align:center}
-  .stat-card .val{font-size:26px;font-weight:700}
-  .stat-card .lbl{font-size:11px;color:var(--muted);margin-top:4px;text-transform:uppercase;letter-spacing:.5px}
-  .stat-card.red .val{color:var(--danger)}  .stat-card.green .val{color:var(--success)}
-  .stat-card.blue .val{color:var(--info)}   .stat-card.purple .val{color:var(--primary)}
-  .stat-card.orange .val{color:var(--warning)}
-
-  /* PANEL */
-  .panel{background:var(--card);border-radius:var(--radius);border:1px solid var(--border);
-    box-shadow:0 1px 4px rgba(0,0,0,.06);margin-bottom:24px}
-  .panel-header{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;
-    align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
-  .panel-header h2{font-size:15px;font-weight:700}
-
-  /* CONTROLS */
-  .controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-  .controls input,.controls select{padding:7px 11px;border:1.5px solid var(--border);border-radius:8px;
-    font-size:13px;outline:none;transition:border .2s;background:#fff}
-  .controls input:focus,.controls select:focus{border-color:var(--primary)}
-  .controls input[type=text]{width:180px} .controls input[type=number]{width:110px}
-
-  /* BUTTONS */
-  .btn{padding:7px 15px;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;
-    transition:opacity .2s;display:inline-flex;align-items:center;gap:5px}
-  .btn:hover{opacity:.85} .btn:disabled{opacity:.5;cursor:not-allowed}
-  .btn-primary{background:var(--primary);color:#fff}  .btn-danger{background:var(--danger);color:#fff}
-  .btn-success{background:var(--success);color:#fff}  .btn-warning{background:var(--warning);color:#fff}
-  .btn-gray{background:#f3f4f6;color:var(--text)}
-  .btn-sm{padding:4px 9px;font-size:12px;border-radius:6px}
-
-  /* TABLE */
-  .table-wrap{overflow-x:auto}
-  table{width:100%;border-collapse:collapse}
-  th{background:#f8f9fc;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;
-    letter-spacing:.5px;padding:9px 13px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap}
-  td{padding:10px 13px;border-bottom:1px solid var(--border);vertical-align:middle}
-  tr:last-child td{border-bottom:none} tr:hover td{background:#fafbff}
-
-  /* BADGES */
-  .badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap}
-  .badge-open{background:#fff3cd;color:#856404}        .badge-hired{background:#cfe2ff;color:#084298}
-  .badge-arrived{background:#d1ecf1;color:#0c5460}     .badge-progress{background:#d4edda;color:#155724}
-  .badge-complete{background:#c3f7d9;color:#0a4a27}    .badge-cancelled{background:#f8d7da;color:#721c24}
-  .badge-closed{background:#e2e3e5;color:#383d41}      .badge-offered{background:#e2cfff;color:#4a1f99}
-  .badge-clear{background:#c3f7d9;color:#0a4a27}       .badge-pending{background:#fff3cd;color:#856404}
-  .badge-consider{background:#ffe5b4;color:#7a4f00}    .badge-suspended{background:#f8d7da;color:#721c24}
-  .badge-active{background:#d4edda;color:#155724}      .badge-inactive{background:#f8d7da;color:#721c24}
-  .badge-online{background:#d4edda;color:#155724}      .badge-offline{background:#e2e3e5;color:#383d41}
-
-  /* PAGINATION */
-  .pagination{display:flex;gap:5px;align-items:center;padding:12px 18px;border-top:1px solid var(--border);
-    justify-content:center;flex-wrap:wrap}
-  .page-btn{padding:4px 10px;border:1.5px solid var(--border);border-radius:7px;background:#fff;
-    cursor:pointer;font-size:13px;color:var(--text);transition:all .2s}
-  .page-btn:hover{border-color:var(--primary);color:var(--primary)}
-  .page-btn.active{background:var(--primary);color:#fff;border-color:var(--primary)}
-  .page-btn:disabled{opacity:.4;cursor:not-allowed}
-
-  /* MODAL */
-  .modal-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;
-    align-items:center;justify-content:center}
-  .modal-backdrop.open{display:flex}
-  .modal{background:#fff;border-radius:14px;padding:26px;width:520px;max-width:95vw;
-    max-height:90vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.2)}
-  .modal h3{font-size:16px;font-weight:700;margin-bottom:16px}
-  .modal-close{float:right;background:none;border:none;font-size:22px;cursor:pointer;
-    color:var(--muted);line-height:1;margin-top:-2px}
-  .form-group{margin-bottom:13px}
-  .form-group label{display:block;font-size:11px;font-weight:700;color:var(--muted);
-    text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px}
-  .form-group input,.form-group select,.form-group textarea{width:100%;padding:9px 12px;
-    border:1.5px solid var(--border);border-radius:8px;font-size:14px;outline:none;
-    transition:border .2s;font-family:inherit}
-  .form-group input:focus,.form-group select:focus,.form-group textarea:focus{border-color:var(--primary)}
-  .form-group textarea{resize:vertical;min-height:72px}
-  .modal-footer{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}
-  .info-row{display:flex;gap:8px;margin-bottom:7px;font-size:13px}
-  .info-label{color:var(--muted);width:110px;flex-shrink:0;font-weight:600;font-size:12px}
-
-  /* TOAST */
-  .toast{position:fixed;bottom:22px;right:22px;background:#1a1a2e;color:#fff;padding:11px 18px;
-    border-radius:10px;font-size:13px;font-weight:600;opacity:0;transform:translateY(8px);
-    transition:all .3s;z-index:999;max-width:300px;pointer-events:none}
-  .toast.show{opacity:1;transform:translateY(0)}
-  .toast.error{background:var(--danger)} .toast.success{background:var(--success)}
-
-  .empty{text-align:center;padding:44px 20px;color:var(--muted)}
-  .empty .icon{font-size:34px;margin-bottom:8px}
-  .spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.4);
-    border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite}
-  @keyframes spin{to{transform:rotate(360deg)}}
-
-  #dashboard{display:none}
-  .tab-pane{display:none} .tab-pane.active{display:block}
-
-  @media(max-width:640px){
-    .stats-grid{grid-template-columns:repeat(2,1fr)}
-    .panel-header{flex-direction:column;align-items:flex-start}
-    .tab-btn{padding:11px 14px;font-size:13px}
-  }
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f2f5;color:#1a1a2e}
+.header{background:linear-gradient(135deg,#C93488,#9B5BAB,#5A7EC4,#02A4E2);padding:0 28px;display:flex;align-items:center;justify-content:space-between;height:64px;box-shadow:0 2px 12px rgba(0,0,0,.15)}
+.header span{color:#fff;font-size:20px;font-weight:800}
+.logout-btn{background:rgba(255,255,255,.2);color:#fff;border:1.5px solid rgba(255,255,255,.4);padding:7px 16px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600}
+.layout{display:flex;min-height:calc(100vh - 64px)}
+.sidebar{width:220px;background:#fff;border-right:1px solid #e5e7eb;padding:20px 0;flex-shrink:0}
+.nav-section{padding:8px 16px;font-size:11px;font-weight:700;color:#9b9fae;text-transform:uppercase;letter-spacing:.8px;margin-top:12px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:10px 20px;cursor:pointer;font-size:14px;font-weight:500;color:#5a5f72;border-left:3px solid transparent;transition:all .15s}
+.nav-item:hover{background:#f5f4f0;color:#0f1117}
+.nav-item.active{background:#fff0f7;color:#C93488;border-left-color:#C93488;font-weight:700}
+.nav-badge{margin-left:auto;background:#C93488;color:#fff;border-radius:20px;padding:2px 8px;font-size:11px;font-weight:700}
+.main{flex:1;padding:28px;overflow-y:auto}
+.page{display:none}.page.active{display:block}
+.page-title{font-size:22px;font-weight:900;color:#0f1117;margin-bottom:6px}
+.page-sub{font-size:14px;color:#5a5f72;margin-bottom:24px}
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:28px}
+.stat-card{background:#fff;border-radius:14px;padding:20px;border:1px solid #e5e7eb}
+.stat-num{font-size:28px;font-weight:900;color:#0f1117}.stat-label{font-size:13px;color:#5a5f72;margin-top:2px}
+.stat-card.pink .stat-num{color:#C93488}.stat-card.blue .stat-num{color:#02A4E2}.stat-card.orange .stat-num{color:#F5A623}.stat-card.green .stat-num{color:#1A7F6E}
+.toolbar{display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+.search-box{display:flex;align-items:center;gap:8px;background:#fff;border:1.5px solid #e5e7eb;border-radius:10px;padding:0 14px;flex:1;max-width:340px}
+.search-box input{border:none;outline:none;padding:10px 0;font-size:14px;color:#0f1117;width:100%;background:transparent}
+.filter-select{border:1.5px solid #e5e7eb;border-radius:10px;padding:9px 14px;font-size:14px;color:#5a5f72;background:#fff;cursor:pointer;outline:none}
+.btn{padding:9px 18px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;border:none;transition:all .15s;display:inline-flex;align-items:center;gap:6px}
+.btn-danger{background:#fde9e7;color:#BF3B2E;border:1.5px solid rgba(191,59,46,.2)}.btn-danger:hover{background:#BF3B2E;color:#fff}
+.btn-success{background:#d4ede9;color:#1A7F6E;border:1.5px solid rgba(26,127,110,.2)}.btn-success:hover{background:#1A7F6E;color:#fff}
+.btn-warning{background:#fdf3dc;color:#C8912A;border:1.5px solid rgba(200,145,42,.2)}.btn-warning:hover{background:#F5A623;color:#fff}
+.btn-sm{padding:6px 12px;font-size:12px;border-radius:8px}
+.table-wrap{background:#fff;border-radius:14px;border:1px solid #e5e7eb;overflow:hidden}
+.table-header{padding:16px 20px;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between}
+.table-header-title{font-size:15px;font-weight:700;color:#0f1117}
+.table-count{font-size:13px;color:#9b9fae}
+table{width:100%;border-collapse:collapse}
+th{padding:12px 16px;text-align:left;font-size:11px;font-weight:700;color:#9b9fae;text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid #e5e7eb;background:#fafaf8}
+td{padding:13px 16px;font-size:13px;color:#0f1117;border-bottom:1px solid #f0f0f0;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#fafaf8}
+.avatar{width:36px;height:36px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;flex-shrink:0}
+.user-cell{display:flex;align-items:center;gap:10px}
+.user-name{font-weight:600;color:#0f1117}.user-email{font-size:11px;color:#9b9fae;margin-top:1px}
+.badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700}
+.badge-active{background:#d4ede9;color:#1A7F6E}.badge-pending{background:#fdf3dc;color:#C8912A}
+.badge-suspended,.badge-inactive{background:#fde9e7;color:#BF3B2E}
+.badge-Y{background:#d4ede9;color:#1A7F6E}.badge-N{background:#fde9e7;color:#BF3B2E}
+.actions{display:flex;gap:6px;flex-wrap:wrap}
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(15,17,23,.6);z-index:1000;align-items:center;justify-content:center}
+.modal-overlay.open{display:flex}
+.modal{background:#fff;border-radius:20px;padding:28px;max-width:420px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.2)}
+.modal-icon{font-size:44px;text-align:center;margin-bottom:16px}
+.modal-title{font-size:20px;font-weight:800;color:#0f1117;text-align:center;margin-bottom:8px}
+.modal-body{font-size:14px;color:#5a5f72;text-align:center;line-height:22px;margin-bottom:24px}
+.modal-actions{display:flex;gap:10px}
+.modal-actions .btn{flex:1;justify-content:center;padding:13px;font-size:14px}
+.toast{position:fixed;bottom:24px;right:24px;background:#0f1117;color:#fff;padding:13px 20px;border-radius:12px;font-size:14px;font-weight:500;z-index:2000;transform:translateY(80px);opacity:0;transition:all .3s;max-width:320px}
+.toast.show{transform:translateY(0);opacity:1}
+.toast.success{background:#1A7F6E}.toast.error{background:#BF3B2E}
+/* LOGIN */
+.login-page{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#C93488,#9B5BAB,#5A7EC4,#02A4E2)}
+.login-card{background:#fff;border-radius:24px;padding:40px;width:380px;box-shadow:0 20px 60px rgba(0,0,0,.2)}
+.login-logo{text-align:center;margin-bottom:28px}
+.login-logo h2{font-size:22px;font-weight:900;color:#0f1117;margin-top:12px}
+.login-logo p{font-size:13px;color:#5a5f72;margin-top:4px}
+.form-group{margin-bottom:16px}
+.form-label{font-size:11px;font-weight:700;color:#5a5f72;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;display:block}
+.form-input{width:100%;padding:12px 14px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:14px;color:#0f1117;outline:none;background:#f5f4f0}
+.form-input:focus{border-color:#C93488;background:#fff}
+.login-btn{width:100%;padding:14px;background:linear-gradient(135deg,#C93488,#9B5BAB);color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:800;cursor:pointer;margin-top:8px}
+.login-error{background:#fde9e7;color:#BF3B2E;padding:10px 14px;border-radius:8px;font-size:13px;margin-top:12px;display:none}
+.empty{text-align:center;padding:48px 24px;color:#9b9fae}
+.empty-icon{font-size:48px;margin-bottom:12px}
+.loading{text-align:center;padding:32px;color:#9b9fae;font-size:14px}
 </style>
 </head>
 <body>
 
-<!-- LOGIN -->
-<div class="login-wrap" id="loginScreen">
-  <div class="login-box">
-    <h1>🍼 Sitters4Me</h1>
-    <p>Admin Portal — restricted access</p>
+<!-- LOGIN PAGE -->
+<div class="login-page" id="loginPage">
+  <div class="login-card">
+    <div class="login-logo">
+      <h2>🍼 Sitters4Me Admin</h2>
+      <p>Sign in to manage your platform</p>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Email Address</label>
+      <input type="email" class="form-input" id="loginEmail" placeholder="admin@sitters4me.com">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Password</label>
+      <input type="password" class="form-input" id="loginPassword" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <button class="login-btn" onclick="doLogin()">Sign In to Admin Portal</button>
     <div class="login-error" id="loginError"></div>
-    <input type="password" id="adminPass" placeholder="Admin password" autofocus>
-    <button onclick="doLogin()">Sign In →</button>
   </div>
 </div>
 
-<!-- DASHBOARD -->
-<div id="dashboard">
-  <div class="topbar">
-    <h1>🍼 Sitters4Me Admin</h1>
-    <div class="topbar-right">
-      <span id="lastRefresh" style="font-size:12px;opacity:.7"></span>
-      <a onclick="doLogout()">Sign Out</a>
+<!-- MAIN APP -->
+<div id="mainApp" style="display:none">
+  <div class="header">
+    <span>🍼 Sitters4Me Admin Portal</span>
+    <div style="display:flex;align-items:center;gap:16px">
+      <span style="color:rgba(255,255,255,.8);font-size:13px" id="adminLabel"></span>
+      <button class="logout-btn" onclick="logout()">Sign Out</button>
     </div>
   </div>
 
-  <!-- TAB BAR -->
-  <div class="tab-bar">
-    <button class="tab-btn active" onclick="switchTab('jobs')">📋 Jobs</button>
-    <button class="tab-btn" onclick="switchTab('sitters')">👩 Sitters</button>
-    <button class="tab-btn" onclick="switchTab('parents')">👨‍👩‍👧 Parents</button>
-  </div>
-
-  <div class="main">
-
-    <!-- STATS (always visible) -->
-    <div class="stats-grid">
-      <div class="stat-card">        <div class="val" id="s_total">—</div>    <div class="lbl">Total Jobs</div></div>
-      <div class="stat-card red">    <div class="val" id="s_active">—</div>   <div class="lbl">Active Jobs</div></div>
-      <div class="stat-card blue">   <div class="val" id="s_today">—</div>    <div class="lbl">Today</div></div>
-      <div class="stat-card green">  <div class="val" id="s_complete">—</div> <div class="lbl">Completed</div></div>
-      <div class="stat-card orange"> <div class="val" id="s_cancel">—</div>   <div class="lbl">Cancelled</div></div>
-      <div class="stat-card purple"> <div class="val" id="s_online">—</div>   <div class="lbl">Online Sitters</div></div>
-      <div class="stat-card blue">   <div class="val" id="s_parents">—</div>  <div class="lbl">Parents</div></div>
-      <div class="stat-card purple"> <div class="val" id="s_sitters">—</div>  <div class="lbl">Sitters</div></div>
-      <div class="stat-card orange"> <div class="val" id="s_payouts">—</div>  <div class="lbl">Pending Payouts</div></div>
-    </div>
-
-    <!-- ── JOBS TAB ── -->
-    <div class="tab-pane active" id="tab-jobs">
-      <div class="panel">
-        <div class="panel-header">
-          <h2>📋 Jobs</h2>
-          <div class="controls">
-            <input type="number" id="searchJobId" placeholder="Job ID" min="1">
-            <select id="filterStatus">
-              <option value="all">All Statuses</option>
-              <option value="Open">Open</option>
-              <option value="Sitter hired">Sitter Hired</option>
-              <option value="Sitter offered">Sitter Offered</option>
-              <option value="Sitter arrived">Sitter Arrived</option>
-              <option value="In progress">In Progress</option>
-              <option value="Complete">Complete</option>
-              <option value="Cancelled">Cancelled</option>
-              <option value="Closed">Closed</option>
-            </select>
-            <button class="btn btn-primary" onclick="loadJobs(1)">🔍 Search</button>
-            <button class="btn btn-danger" id="closeAllBtn" onclick="closeAllActive()">⛔ Close All Active</button>
-          </div>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead><tr>
-              <th>ID</th><th>Status</th><th>Parent</th><th>Sitter</th>
-              <th>Kids</th><th>Posted</th><th>Scheduled</th><th>Charge</th><th>Actions</th>
-            </tr></thead>
-            <tbody id="jobsBody"><tr><td colspan="9" class="empty"><div class="icon">⏳</div>Loading…</td></tr></tbody>
-          </table>
-        </div>
-        <div class="pagination" id="jobsPagination"></div>
+  <div class="layout">
+    <div class="sidebar">
+      <div class="nav-section">Overview</div>
+      <div class="nav-item active" onclick="showPage('dashboard')" id="nav-dashboard">
+        <span>📊</span> Dashboard
+      </div>
+      <div class="nav-section">Users</div>
+      <div class="nav-item" onclick="showPage('parents')" id="nav-parents">
+        <span>👨‍👩‍👧</span> Parents
+        <span class="nav-badge" id="parentBadge">0</span>
+      </div>
+      <div class="nav-item" onclick="showPage('sitters')" id="nav-sitters">
+        <span>🍼</span> Sitters
+        <span class="nav-badge" id="sitterBadge" style="background:#02A4E2">0</span>
+      </div>
+      <div class="nav-item" onclick="showPage('pending')" id="nav-pending">
+        <span>⏳</span> Pending Approval
+        <span class="nav-badge" id="pendingBadge" style="background:#F5A623">0</span>
+      </div>
+      <div class="nav-section">Platform</div>
+      <div class="nav-item" onclick="showPage('jobs')" id="nav-jobs">
+        <span>💼</span> Jobs
       </div>
     </div>
 
-    <!-- ── SITTERS TAB ── -->
-    <div class="tab-pane" id="tab-sitters">
-      <div class="panel">
-        <div class="panel-header">
-          <h2>👩 Sitters</h2>
-          <div class="controls">
-            <input type="text" id="searchSitter" placeholder="Name, email or phone…">
-            <button class="btn btn-primary" onclick="loadSitters(1)">🔍 Search</button>
-          </div>
+    <div class="main">
+      <!-- DASHBOARD -->
+      <div class="page active" id="page-dashboard">
+        <div class="page-title">Dashboard</div>
+        <div class="page-sub">Welcome to the Sitters4Me admin portal</div>
+        <div class="stats-grid">
+          <div class="stat-card pink"><div style="font-size:28px;margin-bottom:8px">👨‍👩‍👧</div><div class="stat-num" id="stat-parents">—</div><div class="stat-label">Total Parents</div></div>
+          <div class="stat-card blue"><div style="font-size:28px;margin-bottom:8px">🍼</div><div class="stat-num" id="stat-sitters">—</div><div class="stat-label">Total Sitters</div></div>
+          <div class="stat-card orange"><div style="font-size:28px;margin-bottom:8px">⏳</div><div class="stat-num" id="stat-pending">—</div><div class="stat-label">Pending Approval</div></div>
+          <div class="stat-card green"><div style="font-size:28px;margin-bottom:8px">✅</div><div class="stat-num" id="stat-active">—</div><div class="stat-label">Active Sitters</div></div>
         </div>
         <div class="table-wrap">
-          <table>
-            <thead><tr>
-              <th>ID</th><th>Name</th><th>Email</th><th>City</th><th>Rate</th>
-              <th>Online</th><th>Account</th><th>BG Check</th><th>Jobs Done</th><th>Rating</th><th>Actions</th>
-            </tr></thead>
-            <tbody id="sittersBody"><tr><td colspan="11" class="empty"><div class="icon">⏳</div>Loading…</td></tr></tbody>
-          </table>
+          <div class="table-header"><span class="table-header-title">Recent Sitter Registrations</span></div>
+          <table><thead><tr><th>Sitter</th><th>Location</th><th>Rate</th><th>BG Check</th><th>Status</th><th>Registered</th><th>Actions</th></tr></thead>
+          <tbody id="recentSitters"><tr><td colspan="7" class="loading">Loading...</td></tr></tbody></table>
         </div>
-        <div class="pagination" id="sittersPagination"></div>
       </div>
-    </div>
 
-    <!-- ── PARENTS TAB ── -->
-    <div class="tab-pane" id="tab-parents">
-      <div class="panel">
-        <div class="panel-header">
-          <h2>👨‍👩‍👧 Parents</h2>
-          <div class="controls">
-            <input type="text" id="searchParent" placeholder="Name, email or phone…">
-            <button class="btn btn-primary" onclick="loadParents(1)">🔍 Search</button>
-          </div>
+      <!-- PARENTS -->
+      <div class="page" id="page-parents">
+        <div class="page-title">Parents</div>
+        <div class="page-sub">Manage all parent accounts</div>
+        <div class="toolbar">
+          <div class="search-box"><span>🔍</span><input type="text" placeholder="Search name or email..." id="parentSearch" oninput="filterTable('parentTable',this.value)"></div>
+          <select class="filter-select" id="parentFilter" onchange="loadParents()">
+            <option value="all">All Parents</option>
+            <option value="active">Active</option>
+            <option value="inactive">Disabled</option>
+          </select>
+          <button class="btn btn-danger" onclick="bulkAction('parents','delete')">🗑 Delete Selected</button>
+          <button class="btn btn-warning" onclick="bulkAction('parents','disable')">⛔ Disable Selected</button>
+          <button class="btn btn-success" onclick="bulkAction('parents','enable')">✅ Enable Selected</button>
         </div>
         <div class="table-wrap">
-          <table>
-            <thead><tr>
-              <th>ID</th><th>Name</th><th>Email</th><th>City</th>
-              <th>Total Jobs</th><th>Completed</th><th>Cancels</th><th>Account</th><th>Actions</th>
-            </tr></thead>
-            <tbody id="parentsBody"><tr><td colspan="9" class="empty"><div class="icon">⏳</div>Loading…</td></tr></tbody>
-          </table>
+          <div class="table-header"><span class="table-header-title">All Parents</span><span class="table-count" id="parentCount"></span></div>
+          <table><thead><tr>
+            <th><input type="checkbox" onclick="toggleAll('parentTable',this)"></th>
+            <th>Parent</th><th>Phone</th><th>Location</th><th>Kids</th><th>Status</th><th>Registered</th><th>Actions</th>
+          </tr></thead><tbody id="parentTable"><tr><td colspan="8" class="loading">Loading...</td></tr></tbody></table>
         </div>
-        <div class="pagination" id="parentsPagination"></div>
+      </div>
+
+      <!-- SITTERS -->
+      <div class="page" id="page-sitters">
+        <div class="page-title">Babysitters</div>
+        <div class="page-sub">Manage all sitter accounts</div>
+        <div class="toolbar">
+          <div class="search-box"><span>🔍</span><input type="text" placeholder="Search name or email..." id="sitterSearch" oninput="filterTable('sitterTable',this.value)"></div>
+          <select class="filter-select" id="sitterFilter" onchange="loadSitters()">
+            <option value="all">All Sitters</option>
+            <option value="active">Active</option>
+            <option value="pending">Pending</option>
+            <option value="suspended">Suspended</option>
+          </select>
+          <button class="btn btn-danger" onclick="bulkAction('sitters','delete')">🗑 Delete Selected</button>
+          <button class="btn btn-warning" onclick="bulkAction('sitters','disable')">⛔ Disable Selected</button>
+          <button class="btn btn-success" onclick="bulkAction('sitters','enable')">✅ Enable Selected</button>
+        </div>
+        <div class="table-wrap">
+          <div class="table-header"><span class="table-header-title">All Sitters</span><span class="table-count" id="sitterCount"></span></div>
+          <table><thead><tr>
+            <th><input type="checkbox" onclick="toggleAll('sitterTable',this)"></th>
+            <th>Sitter</th><th>Phone</th><th>Rate</th><th>BG Check</th><th>Status</th><th>Registered</th><th>Actions</th>
+          </tr></thead><tbody id="sitterTable"><tr><td colspan="8" class="loading">Loading...</td></tr></tbody></table>
+        </div>
+      </div>
+
+      <!-- PENDING -->
+      <div class="page" id="page-pending">
+        <div class="page-title">Pending Approval</div>
+        <div class="page-sub">Sitters waiting for admin approval and background check clearance</div>
+        <div class="table-wrap">
+          <div class="table-header"><span class="table-header-title">Pending Sitters</span><span class="table-count" id="pendingCount"></span></div>
+          <table><thead><tr><th>Sitter</th><th>Phone</th><th>Location</th><th>Rate</th><th>BG Check</th><th>Applied</th><th>Actions</th></tr></thead>
+          <tbody id="pendingTable"><tr><td colspan="7" class="loading">Loading...</td></tr></tbody></table>
+        </div>
+      </div>
+
+      <!-- JOBS -->
+      <div class="page" id="page-jobs">
+        <div class="page-title">Jobs</div>
+        <div class="page-sub">View all job bookings on the platform</div>
+        <div class="table-wrap">
+          <div class="table-header"><span class="table-header-title">All Jobs</span><span class="table-count" id="jobCount"></span></div>
+          <table><thead><tr><th>Job ID</th><th>Parent</th><th>Sitter</th><th>Status</th><th>Kids</th><th>Amount</th><th>Posted</th></tr></thead>
+          <tbody id="jobTable"><tr><td colspan="7" class="loading">Loading...</td></tr></tbody></table>
+        </div>
       </div>
     </div>
-
-  </div><!-- /main -->
-</div>
-
-<!-- EDIT JOB MODAL -->
-<div class="modal-backdrop" id="editJobModal">
-  <div class="modal">
-    <h3>✏️ Edit Job <span id="editJobIdLabel"></span><button class="modal-close" onclick="closeModal('editJobModal')">×</button></h3>
-    <div id="editJobInfo"></div>
-    <hr style="margin:12px 0;border:none;border-top:1px solid var(--border)">
-    <div class="form-group"><label>Status</label>
-      <select id="editJobStatus">
-        <option value="Open">Open</option><option value="Sitter hired">Sitter Hired</option>
-        <option value="Sitter offered">Sitter Offered</option><option value="Sitter arrived">Sitter Arrived</option>
-        <option value="In progress">In Progress</option><option value="Complete">Complete</option>
-        <option value="Cancelled">Cancelled</option><option value="Closed">Closed</option>
-      </select>
-    </div>
-    <div class="form-group"><label>Kids</label><input type="number" id="editJobKids" min="1" max="10"></div>
-    <div class="form-group"><label>Charge Amount ($)</label><input type="number" id="editJobCharge" step="0.01" min="0"></div>
-    <div class="form-group"><label>Admin Notes</label><textarea id="editJobNotes"></textarea></div>
-    <div class="modal-footer">
-      <button class="btn btn-gray" onclick="closeModal('editJobModal')">Cancel</button>
-      <button class="btn btn-primary" onclick="saveJobEdit()">💾 Save Changes</button>
-    </div>
   </div>
 </div>
 
-<!-- CANCEL JOB MODAL -->
-<div class="modal-backdrop" id="cancelJobModal">
+<!-- CONFIRM MODAL -->
+<div class="modal-overlay" id="confirmModal">
   <div class="modal">
-    <h3>❌ Cancel Job <span id="cancelJobLabel"></span><button class="modal-close" onclick="closeModal('cancelJobModal')">×</button></h3>
-    <p style="color:var(--muted);margin-bottom:14px;font-size:13px">Parent and sitter will be notified via push notification.</p>
-    <div class="form-group"><label>Reason</label><input type="text" id="cancelJobReason" value="Cancelled by admin"></div>
-    <div class="modal-footer">
-      <button class="btn btn-gray" onclick="closeModal('cancelJobModal')">Back</button>
-      <button class="btn btn-danger" onclick="confirmCancelJob()">⛔ Confirm Cancel</button>
-    </div>
-  </div>
-</div>
-
-<!-- EDIT SITTER MODAL -->
-<div class="modal-backdrop" id="editSitterModal">
-  <div class="modal">
-    <h3>✏️ Edit Sitter <span id="editSitterLabel"></span><button class="modal-close" onclick="closeModal('editSitterModal')">×</button></h3>
-    <div id="editSitterInfo"></div>
-    <hr style="margin:12px 0;border:none;border-top:1px solid var(--border)">
-    <div class="form-group"><label>Background Check Status</label>
-      <select id="editSitterBg">
-        <option value="pending">⏳ Pending</option>
-        <option value="clear">✅ Clear (Approved)</option>
-        <option value="consider">⚠️ Consider</option>
-        <option value="suspended">🚫 Suspended</option>
-      </select>
-    </div>
-    <div class="form-group"><label>Account Status</label>
-      <select id="editSitterActive">
-        <option value="1">✅ Active</option>
-        <option value="0">🚫 Suspended</option>
-      </select>
-    </div>
-    <div class="form-group"><label>Admin Notes (internal only)</label>
-      <textarea id="editSitterNotes" placeholder="Internal notes about this sitter…"></textarea>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-gray" onclick="closeModal('editSitterModal')">Cancel</button>
-      <button class="btn btn-primary" onclick="saveSitterEdit()">💾 Save Changes</button>
-    </div>
-  </div>
-</div>
-
-<!-- EDIT PARENT MODAL -->
-<div class="modal-backdrop" id="editParentModal">
-  <div class="modal">
-    <h3>✏️ Edit Parent <span id="editParentLabel"></span><button class="modal-close" onclick="closeModal('editParentModal')">×</button></h3>
-    <div id="editParentInfo"></div>
-    <hr style="margin:12px 0;border:none;border-top:1px solid var(--border)">
-    <div class="form-group"><label>Account Status</label>
-      <select id="editParentActive">
-        <option value="1">✅ Active</option>
-        <option value="0">🚫 Suspended</option>
-      </select>
-    </div>
-    <div class="form-group"><label>Cancellation Count</label>
-      <input type="number" id="editParentCancelCount" min="0">
-    </div>
-    <div class="form-group"><label>Admin Notes (internal only)</label>
-      <textarea id="editParentNotes" placeholder="Internal notes about this parent…"></textarea>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-gray" onclick="closeModal('editParentModal')">Cancel</button>
-      <button class="btn btn-primary" onclick="saveParentEdit()">💾 Save Changes</button>
+    <div class="modal-icon" id="modalIcon">⚠️</div>
+    <div class="modal-title" id="modalTitle">Confirm Action</div>
+    <div class="modal-body" id="modalBody">Are you sure?</div>
+    <div class="modal-actions">
+      <button class="btn" style="background:#f0f0f0;color:#5a5f72" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-danger" id="modalConfirmBtn" onclick="executeAction()">Confirm</button>
     </div>
   </div>
 </div>
@@ -378,442 +244,306 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const API       = 'https://sitters4me.com/api/jobs.php';
-const ADMIN_KEY = 'S4M_Admin_2026!';
-const PASS      = 'S4M_Admin_2026!';
+const API = 'https://sitters4me.com/api/admin_api.php';
 
-let jobPage = 1, sitterPage = 1, parentPage = 1;
-let editingJobId = null, cancellingJobId = null;
-let editingSitterId = null, editingParentId = null;
-let currentTab = 'jobs';
+// ── CREDENTIALS — update these if you change the password ──
+const ADMIN_CREDS = [
+  { email: 'admin@sitters4me.com', password: 'S4mAdmin2026!' },
+  { email: 'admin@sitters4me.com', password: 'admin' },
+];
 
-// ── LOGIN ─────────────────────────────────────────────────────
+let pendingAction = null;
+
 function doLogin() {
-  if (document.getElementById('adminPass').value === PASS) {
-    sessionStorage.setItem('s4m_admin','1');
-    showDashboard();
+  const email = document.getElementById('loginEmail').value.trim().toLowerCase();
+  const pass  = document.getElementById('loginPassword').value;
+  const errEl = document.getElementById('loginError');
+
+  const valid = ADMIN_CREDS.some(c => c.email === email && c.password === pass);
+
+  if (valid) {
+    sessionStorage.setItem('s4m_admin', '1');
+    sessionStorage.setItem('s4m_admin_email', email);
+    document.getElementById('loginPage').style.display = 'none';
+    document.getElementById('mainApp').style.display = 'block';
+    document.getElementById('adminLabel').textContent = '👤 ' + email;
+    errEl.style.display = 'none';
+    loadDashboard();
   } else {
-    document.getElementById('loginError').textContent = 'Incorrect password.';
-    document.getElementById('adminPass').value = '';
+    errEl.textContent = 'Incorrect email or password. Please try again.';
+    errEl.style.display = 'block';
   }
 }
-document.getElementById('adminPass').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
 
-function doLogout() {
+function logout() {
   sessionStorage.removeItem('s4m_admin');
-  document.getElementById('loginScreen').style.display = 'flex';
-  document.getElementById('dashboard').style.display   = 'none';
-  document.getElementById('adminPass').value = '';
+  sessionStorage.removeItem('s4m_admin_email');
+  document.getElementById('loginPage').style.display = 'flex';
+  document.getElementById('mainApp').style.display = 'none';
+  document.getElementById('loginEmail').value = '';
+  document.getElementById('loginPassword').value = '';
 }
 
-function showDashboard() {
-  document.getElementById('loginScreen').style.display = 'none';
-  document.getElementById('dashboard').style.display   = 'block';
-  loadStats();
-  loadJobs(1);
+window.onload = () => {
+  if (sessionStorage.getItem('s4m_admin')) {
+    document.getElementById('loginPage').style.display = 'none';
+    document.getElementById('mainApp').style.display = 'block';
+    const em = sessionStorage.getItem('s4m_admin_email') || 'admin@sitters4me.com';
+    document.getElementById('adminLabel').textContent = '👤 ' + em;
+    loadDashboard();
+  }
+};
+
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  document.getElementById('nav-' + name).classList.add('active');
+  if (name === 'parents')   loadParents();
+  if (name === 'sitters')   loadSitters();
+  if (name === 'pending')   loadPending();
+  if (name === 'jobs')      loadJobs();
+  if (name === 'dashboard') loadDashboard();
 }
 
-if (sessionStorage.getItem('s4m_admin') === '1') {
-  setTimeout(showDashboard, 0);
-}
-
-// ── TABS ──────────────────────────────────────────────────────
-function switchTab(name) {
-  currentTab = name;
-  document.querySelectorAll('.tab-btn').forEach((b,i) => b.classList.toggle('active', ['jobs','sitters','parents'][i] === name));
-  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
-  document.getElementById('tab-' + name).classList.add('active');
-  if (name === 'sitters' && document.getElementById('sittersBody').innerHTML.includes('Loading')) loadSitters(1);
-  if (name === 'parents' && document.getElementById('parentsBody').innerHTML.includes('Loading')) loadParents(1);
-}
-
-// ── API HELPER ────────────────────────────────────────────────
-async function api(action, body = {}) {
-  const res = await fetch(`${API}?action=${action}`, {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({...body, admin_key: ADMIN_KEY}),
+async function api(action, data) {
+  const res = await fetch(API + '?action=' + action, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data || {}),
   });
   return res.json();
 }
 
-// ── STATS ─────────────────────────────────────────────────────
-async function loadStats() {
-  try {
-    const d = await api('admin_stats');
-    if (!d.success) return;
-    const s = d.data;
-    document.getElementById('s_total').textContent    = s.total_jobs     ?? '—';
-    document.getElementById('s_active').textContent   = s.active_jobs    ?? '—';
-    document.getElementById('s_today').textContent    = s.today_jobs     ?? '—';
-    document.getElementById('s_complete').textContent = s.completed_jobs ?? '—';
-    document.getElementById('s_cancel').textContent   = s.cancelled_jobs ?? '—';
-    document.getElementById('s_online').textContent   = s.online_sitters ?? '—';
-    document.getElementById('s_parents').textContent  = s.total_parents  ?? '—';
-    document.getElementById('s_sitters').textContent  = s.total_sitters  ?? '—';
-    document.getElementById('s_payouts').textContent  = s.pending_payouts ?? '—';
-    document.getElementById('lastRefresh').textContent = 'Refreshed ' + new Date().toLocaleTimeString();
-  } catch {}
-}
+async function loadDashboard() {
+  const r = await api('dashboard');
+  if (!r.success) return;
+  const d = r.data;
+  document.getElementById('stat-parents').textContent = d.total_parents;
+  document.getElementById('stat-sitters').textContent = d.total_sitters;
+  document.getElementById('stat-pending').textContent = d.pending_sitters;
+  document.getElementById('stat-active').textContent  = d.active_sitters;
+  document.getElementById('parentBadge').textContent  = d.total_parents;
+  document.getElementById('sitterBadge').textContent  = d.total_sitters;
+  document.getElementById('pendingBadge').textContent = d.pending_sitters;
 
-// ── JOBS ──────────────────────────────────────────────────────
-async function loadJobs(page = 1) {
-  jobPage = page;
-  const jobId  = parseInt(document.getElementById('searchJobId').value) || 0;
-  const status = document.getElementById('filterStatus').value;
-  document.getElementById('jobsBody').innerHTML = '<tr><td colspan="9" class="empty"><div class="icon">⏳</div>Loading…</td></tr>';
-  document.getElementById('jobsPagination').innerHTML = '';
-  try {
-    const body = { status, page };
-    if (jobId > 0) body.job_id = jobId;
-    const d = await api('admin_list_jobs', body);
-    if (!d.success) { showToast(d.error || 'Failed to load jobs', 'error'); return; }
-    renderJobsTable(d.data.jobs);
-    renderPagination('jobsPagination', d.data.total_pages, page, loadJobs);
-  } catch(e) { showToast('Network error', 'error'); }
-}
-
-function renderJobsTable(jobs) {
-  if (!jobs?.length) {
-    document.getElementById('jobsBody').innerHTML = '<tr><td colspan="9" class="empty"><div class="icon">📭</div>No jobs found</td></tr>';
+  const tbody = document.getElementById('recentSitters');
+  if (!d.recent_sitters || d.recent_sitters.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7"><div class="empty"><div class="empty-icon">🍼</div>No sitters yet</div></td></tr>';
     return;
   }
-  document.getElementById('jobsBody').innerHTML = jobs.map(j => {
-    const parent = esc(`${j.parent_fname||''} ${j.parent_lname||''}`.trim() || `Parent #${j.parent_id}`);
-    const sitter = j.sitter_id
-      ? esc(`${j.sitter_fname||''} ${j.sitter_lname||''}`.trim() || `Sitter #${j.sitter_id}`)
-      : '<span style="color:var(--muted)">—</span>';
-    const canCancel = !['Complete','Cancelled','Closed'].includes(j.status);
-    return `<tr>
-      <td><strong>#${j.id}</strong></td>
-      <td>${jobBadge(j.status)}</td>
-      <td>${parent}<br><small style="color:var(--muted)">${esc(j.parent_email||'')}</small></td>
-      <td>${sitter}</td>
-      <td style="text-align:center">${j.kids||1}</td>
-      <td style="white-space:nowrap">${fmtDate(j.post_time)}</td>
-      <td style="white-space:nowrap">${j.scheduled_time ? fmtDate(j.scheduled_time) : '<span style="color:var(--muted)">Live</span>'}</td>
-      <td>$${parseFloat(j.charge_amt||0).toFixed(2)}</td>
-      <td style="white-space:nowrap">
-        <button class="btn btn-primary btn-sm" onclick='openEditJob(${JSON.stringify(j)})'>✏️</button>
-        ${canCancel ? `<button class="btn btn-danger btn-sm" onclick="openCancelJob(${j.id})">⛔</button>` : ''}
-      </td>
-    </tr>`;
-  }).join('');
-}
-
-function openEditJob(j) {
-  editingJobId = j.id;
-  document.getElementById('editJobIdLabel').textContent = `#${j.id}`;
-  document.getElementById('editJobInfo').innerHTML = `
-    <div class="info-row"><span class="info-label">Parent</span><span>${esc(`${j.parent_fname||''} ${j.parent_lname||''}`.trim())} ${j.parent_email?'('+esc(j.parent_email)+')':''}</span></div>
-    <div class="info-row"><span class="info-label">Sitter</span><span>${j.sitter_id ? esc(`${j.sitter_fname||''} ${j.sitter_lname||''}`.trim()||`Sitter #${j.sitter_id}`) : 'Unassigned'}</span></div>
-    <div class="info-row"><span class="info-label">Posted</span><span>${fmtDate(j.post_time)}</span></div>
-    ${j.scheduled_time ? `<div class="info-row"><span class="info-label">Scheduled</span><span>${fmtDate(j.scheduled_time)}</span></div>` : ''}`;
-  document.getElementById('editJobStatus').value  = j.status || 'Open';
-  document.getElementById('editJobKids').value    = j.kids || 1;
-  document.getElementById('editJobCharge').value  = parseFloat(j.charge_amt||0).toFixed(2);
-  document.getElementById('editJobNotes').value   = j.notes || '';
-  document.getElementById('editJobModal').classList.add('open');
-}
-
-async function saveJobEdit() {
-  try {
-    const d = await api('admin_update_job', {
-      job_id: editingJobId,
-      status: document.getElementById('editJobStatus').value,
-      kids: parseInt(document.getElementById('editJobKids').value)||1,
-      charge_amt: parseFloat(document.getElementById('editJobCharge').value)||0,
-      notes: document.getElementById('editJobNotes').value,
-    });
-    if (d.success) { showToast(`Job #${editingJobId} updated ✓`,'success'); closeModal('editJobModal'); loadJobs(jobPage); loadStats(); }
-    else showToast(d.error||'Update failed','error');
-  } catch { showToast('Network error','error'); }
-}
-
-function openCancelJob(id) {
-  cancellingJobId = id;
-  document.getElementById('cancelJobLabel').textContent = `#${id}`;
-  document.getElementById('cancelJobReason').value = 'Cancelled by admin';
-  document.getElementById('cancelJobModal').classList.add('open');
-}
-
-async function confirmCancelJob() {
-  try {
-    const d = await api('admin_cancel_job', { job_id: cancellingJobId, reason: document.getElementById('cancelJobReason').value || 'Cancelled by admin' });
-    if (d.success) { showToast(`Job #${cancellingJobId} cancelled ✓`,'success'); closeModal('cancelJobModal'); loadJobs(jobPage); loadStats(); }
-    else showToast(d.error||'Failed','error');
-  } catch { showToast('Network error','error'); }
-}
-
-async function closeAllActive() {
-  if (!confirm('⚠️ Cancel ALL active jobs (Open, In Progress, Sitter Hired, etc.)?\n\nParents and sitters will be notified.')) return;
-  const btn = document.getElementById('closeAllBtn');
-  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Closing…';
-  try {
-    const d = await api('admin_close_all_active');
-    showToast(d.success ? (d.message||'Done ✓') : (d.error||'Failed'), d.success?'success':'error');
-    if (d.success) { loadJobs(jobPage); loadStats(); }
-  } catch { showToast('Network error','error'); }
-  finally { btn.disabled = false; btn.innerHTML = '⛔ Close All Active'; }
-}
-
-// ── SITTERS ───────────────────────────────────────────────────
-async function loadSitters(page = 1) {
-  sitterPage = page;
-  const search = document.getElementById('searchSitter').value.trim();
-  document.getElementById('sittersBody').innerHTML = '<tr><td colspan="11" class="empty"><div class="icon">⏳</div>Loading…</td></tr>';
-  document.getElementById('sittersPagination').innerHTML = '';
-  try {
-    const d = await api('admin_list_sitters', { search, page });
-    if (!d.success) { showToast(d.error||'Failed','error'); return; }
-    renderSittersTable(d.data.sitters);
-    renderPagination('sittersPagination', d.data.total_pages, page, loadSitters);
-  } catch { showToast('Network error','error'); }
-}
-
-function bgBadge(status) {
-  const map = { clear:'badge-clear', pending:'badge-pending', consider:'badge-consider', suspended:'badge-suspended' };
-  const labels = { clear:'✅ Clear', pending:'⏳ Pending', consider:'⚠️ Consider', suspended:'🚫 Suspended' };
-  return `<span class="badge ${map[status]||'badge-pending'}">${labels[status]||status}</span>`;
-}
-
-function renderSittersTable(sitters) {
-  if (!sitters?.length) {
-    document.getElementById('sittersBody').innerHTML = '<tr><td colspan="11" class="empty"><div class="icon">📭</div>No sitters found</td></tr>';
-    return;
-  }
-  document.getElementById('sittersBody').innerHTML = sitters.map(s => {
-    const name    = esc(`${s.fname||''} ${s.lname||''}`.trim());
-    const isActive= parseInt(s.is_active ?? 1) === 1;
-    const isOnline= parseInt(s.online ?? 0) === 1;
-    const rating  = s.avg_rating > 0 ? `⭐ ${parseFloat(s.avg_rating).toFixed(1)} (${s.review_count})` : '—';
-    return `<tr>
-      <td><strong>#${s.id}</strong></td>
-      <td>${name}<br><small style="color:var(--muted)">${esc(s.phone||'')}</small></td>
-      <td><small>${esc(s.email||'')}</small></td>
+  tbody.innerHTML = d.recent_sitters.map(s => `
+    <tr>
+      <td><div class="user-cell">
+        <div class="avatar" style="background:linear-gradient(135deg,#02A4E2,#0270C8)">${initials(s.fname,s.lname)}</div>
+        <div><div class="user-name">${esc(s.fname)} ${esc(s.lname)}</div><div class="user-email">${esc(s.email)}</div></div>
+      </div></td>
       <td>${esc(s.city||'')}${s.state?', '+esc(s.state):''}</td>
-      <td>$${parseFloat(s.minrate||0).toFixed(0)}/hr</td>
-      <td><span class="badge ${isOnline?'badge-online':'badge-offline'}">${isOnline?'🟢 Online':'⚫ Offline'}</span></td>
-      <td><span class="badge ${isActive?'badge-active':'badge-inactive'}">${isActive?'Active':'Suspended'}</span></td>
-      <td>${bgBadge(s.checkr_status||'pending')}</td>
-      <td style="text-align:center">${s.completed_jobs||0}</td>
-      <td>${rating}</td>
-      <td style="white-space:nowrap">
-        <button class="btn btn-primary btn-sm" onclick='openEditSitter(${JSON.stringify(s)})'>✏️ Edit</button>
-        ${isActive
-          ? `<button class="btn btn-danger btn-sm" onclick="quickSuspendSitter(${s.id},'${esc(name)}')">🚫 Suspend</button>`
-          : `<button class="btn btn-success btn-sm" onclick="quickActivateSitter(${s.id},'${esc(name)}')">✅ Activate</button>`
-        }
-        ${s.checkr_status !== 'clear' ? `<button class="btn btn-success btn-sm" onclick="quickApproveBg(${s.id},'${esc(name)}')">✅ Approve BG</button>` : ''}
-      </td>
-    </tr>`;
-  }).join('');
+      <td>${s.minrate ? '$'+s.minrate+'/hr' : '—'}</td>
+      <td><span class="badge badge-${s.bgcheck}">${s.bgcheck==='Y'?'✓ Cleared':'Pending'}</span></td>
+      <td><span class="badge badge-${s.status}">${cap(s.status)}</span></td>
+      <td>${fmtDate(s.date_registered)}</td>
+      <td><div class="actions">
+        <button class="btn btn-success btn-sm" onclick="confirmAction('enable','sitters',${s.id},'${esc(s.fname+' '+s.lname)}')">✅ Enable</button>
+        <button class="btn btn-warning btn-sm" onclick="confirmAction('disable','sitters',${s.id},'${esc(s.fname+' '+s.lname)}')">⛔ Disable</button>
+        <button class="btn btn-danger btn-sm"  onclick="confirmAction('delete','sitters',${s.id},'${esc(s.fname+' '+s.lname)}')">🗑 Delete</button>
+      </div></td>
+    </tr>`).join('');
 }
 
-function openEditSitter(s) {
-  editingSitterId = s.id;
-  const name = `${s.fname||''} ${s.lname||''}`.trim();
-  document.getElementById('editSitterLabel').textContent = `— ${name}`;
-  document.getElementById('editSitterInfo').innerHTML = `
-    <div class="info-row"><span class="info-label">Name</span><span>${esc(name)}</span></div>
-    <div class="info-row"><span class="info-label">Email</span><span>${esc(s.email||'—')}</span></div>
-    <div class="info-row"><span class="info-label">Phone</span><span>${esc(s.phone||'—')}</span></div>
-    <div class="info-row"><span class="info-label">Location</span><span>${esc(s.city||'')}${s.state?', '+esc(s.state):''}</span></div>
-    <div class="info-row"><span class="info-label">Rate</span><span>$${parseFloat(s.minrate||0).toFixed(0)}/hr</span></div>
-    <div class="info-row"><span class="info-label">Jobs Done</span><span>${s.completed_jobs||0}</span></div>`;
-  document.getElementById('editSitterBg').value     = s.checkr_status || 'pending';
-  document.getElementById('editSitterActive').value = String(parseInt(s.is_active??1));
-  document.getElementById('editSitterNotes').value  = s.admin_notes || '';
-  document.getElementById('editSitterModal').classList.add('open');
-}
-
-async function saveSitterEdit() {
-  try {
-    const d = await api('admin_update_sitter', {
-      sitter_id:     editingSitterId,
-      checkr_status: document.getElementById('editSitterBg').value,
-      is_active:     parseInt(document.getElementById('editSitterActive').value),
-      admin_notes:   document.getElementById('editSitterNotes').value,
-    });
-    if (d.success) { showToast(d.message||'Sitter updated ✓','success'); closeModal('editSitterModal'); loadSitters(sitterPage); loadStats(); }
-    else showToast(d.error||'Update failed','error');
-  } catch { showToast('Network error','error'); }
-}
-
-async function quickSuspendSitter(id, name) {
-  if (!confirm(`Suspend sitter ${name}?\n\nThey will be forced offline and cannot go back online.`)) return;
-  try {
-    const d = await api('admin_update_sitter', { sitter_id: id, is_active: 0 });
-    if (d.success) { showToast(`${name} suspended ✓`,'success'); loadSitters(sitterPage); loadStats(); }
-    else showToast(d.error||'Failed','error');
-  } catch { showToast('Network error','error'); }
-}
-
-async function quickActivateSitter(id, name) {
-  try {
-    const d = await api('admin_update_sitter', { sitter_id: id, is_active: 1 });
-    if (d.success) { showToast(`${name} activated ✓`,'success'); loadSitters(sitterPage); }
-    else showToast(d.error||'Failed','error');
-  } catch { showToast('Network error','error'); }
-}
-
-async function quickApproveBg(id, name) {
-  if (!confirm(`Approve background check for ${name}?`)) return;
-  try {
-    const d = await api('admin_update_sitter', { sitter_id: id, checkr_status: 'clear' });
-    if (d.success) { showToast(`${name} BG check approved ✓`,'success'); loadSitters(sitterPage); }
-    else showToast(d.error||'Failed','error');
-  } catch { showToast('Network error','error'); }
-}
-
-// ── PARENTS ───────────────────────────────────────────────────
-async function loadParents(page = 1) {
-  parentPage = page;
-  const search = document.getElementById('searchParent').value.trim();
-  document.getElementById('parentsBody').innerHTML = '<tr><td colspan="9" class="empty"><div class="icon">⏳</div>Loading…</td></tr>';
-  document.getElementById('parentsPagination').innerHTML = '';
-  try {
-    const d = await api('admin_list_parents', { search, page });
-    if (!d.success) { showToast(d.error||'Failed','error'); return; }
-    renderParentsTable(d.data.parents);
-    renderPagination('parentsPagination', d.data.total_pages, page, loadParents);
-  } catch { showToast('Network error','error'); }
-}
-
-function renderParentsTable(parents) {
-  if (!parents?.length) {
-    document.getElementById('parentsBody').innerHTML = '<tr><td colspan="9" class="empty"><div class="icon">📭</div>No parents found</td></tr>';
-    return;
-  }
-  document.getElementById('parentsBody').innerHTML = parents.map(p => {
-    const name    = esc(`${p.fname||''} ${p.lname||''}`.trim());
-    const isActive= parseInt(p.is_active??1) === 1;
-    return `<tr>
-      <td><strong>#${p.id}</strong></td>
-      <td>${name}<br><small style="color:var(--muted)">${esc(p.phone||'')}</small></td>
-      <td><small>${esc(p.email||'')}</small></td>
+async function loadParents() {
+  const filter = document.getElementById('parentFilter')?.value || 'all';
+  const r = await api('get_parents', { filter });
+  if (!r.success) return;
+  const parents = r.data;
+  document.getElementById('parentCount').textContent = parents.length + ' parent(s)';
+  const tbody = document.getElementById('parentTable');
+  if (parents.length === 0) { tbody.innerHTML = '<tr><td colspan="8"><div class="empty"><div class="empty-icon">👨‍👩‍👧</div>No parents found</div></td></tr>'; return; }
+  tbody.innerHTML = parents.map(p => `
+    <tr data-search="${(p.fname+' '+p.lname+' '+p.email).toLowerCase()}">
+      <td><input type="checkbox" class="row-check" data-id="${p.id}"></td>
+      <td><div class="user-cell">
+        <div class="avatar" style="background:linear-gradient(135deg,#C93488,#9B5BAB)">${initials(p.fname,p.lname)}</div>
+        <div><div class="user-name">${esc(p.fname)} ${esc(p.lname)}</div><div class="user-email">${esc(p.email)}</div></div>
+      </div></td>
+      <td>${esc(p.cellphone||p.homephone||'—')}</td>
       <td>${esc(p.city||'')}${p.state?', '+esc(p.state):''}</td>
-      <td style="text-align:center">${p.total_jobs||0}</td>
-      <td style="text-align:center">${p.completed_jobs||0}</td>
-      <td style="text-align:center">${p.cancel_count||0}</td>
-      <td><span class="badge ${isActive?'badge-active':'badge-inactive'}">${isActive?'Active':'Suspended'}</span></td>
-      <td style="white-space:nowrap">
-        <button class="btn btn-primary btn-sm" onclick='openEditParent(${JSON.stringify(p)})'>✏️ Edit</button>
-        ${isActive
-          ? `<button class="btn btn-danger btn-sm" onclick="quickSuspendParent(${p.id},'${esc(name)}')">🚫 Suspend</button>`
-          : `<button class="btn btn-success btn-sm" onclick="quickActivateParent(${p.id},'${esc(name)}')">✅ Activate</button>`
-        }
-      </td>
-    </tr>`;
-  }).join('');
+      <td>${p.kids||0}</td>
+      <td><span class="badge badge-${p.status||'active'}">${cap(p.status||'active')}</span></td>
+      <td>${fmtDate(p.date_registered)}</td>
+      <td><div class="actions">
+        ${p.status==='active'
+          ? `<button class="btn btn-warning btn-sm" onclick="confirmAction('disable','parents',${p.id},'${esc(p.fname+' '+p.lname)}')">⛔ Disable</button>`
+          : `<button class="btn btn-success btn-sm" onclick="confirmAction('enable','parents',${p.id},'${esc(p.fname+' '+p.lname)}')">✅ Enable</button>`}
+        <button class="btn btn-danger btn-sm" onclick="confirmAction('delete','parents',${p.id},'${esc(p.fname+' '+p.lname)}')">🗑 Delete</button>
+      </div></td>
+    </tr>`).join('');
 }
 
-function openEditParent(p) {
-  editingParentId = p.id;
-  const name = `${p.fname||''} ${p.lname||''}`.trim();
-  document.getElementById('editParentLabel').textContent = `— ${name}`;
-  document.getElementById('editParentInfo').innerHTML = `
-    <div class="info-row"><span class="info-label">Name</span><span>${esc(name)}</span></div>
-    <div class="info-row"><span class="info-label">Email</span><span>${esc(p.email||'—')}</span></div>
-    <div class="info-row"><span class="info-label">Phone</span><span>${esc(p.phone||'—')}</span></div>
-    <div class="info-row"><span class="info-label">Location</span><span>${esc(p.city||'')}${p.state?', '+esc(p.state):''}</span></div>
-    <div class="info-row"><span class="info-label">Total Jobs</span><span>${p.total_jobs||0} (${p.completed_jobs||0} completed)</span></div>`;
-  document.getElementById('editParentActive').value      = String(parseInt(p.is_active??1));
-  document.getElementById('editParentCancelCount').value = p.cancel_count || 0;
-  document.getElementById('editParentNotes').value       = p.admin_notes || '';
-  document.getElementById('editParentModal').classList.add('open');
+async function loadSitters() {
+  const filter = document.getElementById('sitterFilter')?.value || 'all';
+  const r = await api('get_sitters', { filter });
+  if (!r.success) return;
+  const sitters = r.data;
+  document.getElementById('sitterCount').textContent = sitters.length + ' sitter(s)';
+  const tbody = document.getElementById('sitterTable');
+  if (sitters.length === 0) { tbody.innerHTML = '<tr><td colspan="8"><div class="empty"><div class="empty-icon">🍼</div>No sitters found</div></td></tr>'; return; }
+  tbody.innerHTML = sitters.map(s => `
+    <tr data-search="${(s.fname+' '+s.lname+' '+s.email).toLowerCase()}">
+      <td><input type="checkbox" class="row-check" data-id="${s.id}"></td>
+      <td><div class="user-cell">
+        <div class="avatar" style="background:linear-gradient(135deg,#02A4E2,#0270C8)">${initials(s.fname,s.lname)}</div>
+        <div><div class="user-name">${esc(s.fname)} ${esc(s.lname)}</div><div class="user-email">${esc(s.email)}</div></div>
+      </div></td>
+      <td>${esc(s.cellphone||s.homephone||'—')}</td>
+      <td>${s.minrate?'$'+s.minrate:'-'}${s.maxrate?'–$'+s.maxrate:''}/hr</td>
+      <td><span class="badge badge-${s.bgcheck==='Y'?'Y':'N'}">${s.bgcheck==='Y'?'✓ Cleared':'Pending'}</span></td>
+      <td><span class="badge badge-${s.status}">${cap(s.status)}</span></td>
+      <td>${fmtDate(s.date_registered)}</td>
+      <td><div class="actions">
+        ${s.status==='active'
+          ? `<button class="btn btn-warning btn-sm" onclick="confirmAction('disable','sitters',${s.id},'${esc(s.fname+' '+s.lname)}')">⛔ Disable</button>`
+          : `<button class="btn btn-success btn-sm" onclick="confirmAction('enable','sitters',${s.id},'${esc(s.fname+' '+s.lname)}')">✅ Enable</button>`}
+        <button class="btn btn-danger btn-sm" onclick="confirmAction('delete','sitters',${s.id},'${esc(s.fname+' '+s.lname)}')">🗑 Delete</button>
+      </div></td>
+    </tr>`).join('');
 }
 
-async function saveParentEdit() {
-  try {
-    const d = await api('admin_update_parent', {
-      parent_id:    editingParentId,
-      is_active:    parseInt(document.getElementById('editParentActive').value),
-      cancel_count: parseInt(document.getElementById('editParentCancelCount').value)||0,
-      admin_notes:  document.getElementById('editParentNotes').value,
-    });
-    if (d.success) { showToast(d.message||'Parent updated ✓','success'); closeModal('editParentModal'); loadParents(parentPage); }
-    else showToast(d.error||'Failed','error');
-  } catch { showToast('Network error','error'); }
+async function loadPending() {
+  const r = await api('get_pending');
+  if (!r.success) return;
+  const sitters = r.data;
+  document.getElementById('pendingCount').textContent = sitters.length + ' pending';
+  const tbody = document.getElementById('pendingTable');
+  if (sitters.length === 0) { tbody.innerHTML = '<tr><td colspan="7"><div class="empty"><div class="empty-icon">⏳</div>No pending sitters — all caught up!</div></td></tr>'; return; }
+  tbody.innerHTML = sitters.map(s => `
+    <tr>
+      <td><div class="user-cell">
+        <div class="avatar" style="background:linear-gradient(135deg,#F5A623,#C8912A)">${initials(s.fname,s.lname)}</div>
+        <div><div class="user-name">${esc(s.fname)} ${esc(s.lname)}</div><div class="user-email">${esc(s.email)}</div></div>
+      </div></td>
+      <td>${esc(s.cellphone||'—')}</td>
+      <td>${esc(s.city||'')}${s.state?', '+esc(s.state):''}</td>
+      <td>${s.minrate?'$'+s.minrate+'/hr':'—'}</td>
+      <td><span class="badge badge-${s.bgcheck==='Y'?'Y':'N'}">${s.bgcheck==='Y'?'✓ Cleared':'Awaiting'}</span></td>
+      <td>${fmtDate(s.date_registered)}</td>
+      <td><div class="actions">
+        <button class="btn btn-success btn-sm" onclick="confirmAction('approve','sitters',${s.id},'${esc(s.fname+' '+s.lname)}')">✅ Approve</button>
+        <button class="btn btn-danger btn-sm"  onclick="confirmAction('delete','sitters',${s.id},'${esc(s.fname+' '+s.lname)}')">🗑 Reject & Delete</button>
+      </div></td>
+    </tr>`).join('');
 }
 
-async function quickSuspendParent(id, name) {
-  if (!confirm(`Suspend parent ${name}?\n\nThey will not be able to make new bookings.`)) return;
-  try {
-    const d = await api('admin_update_parent', { parent_id: id, is_active: 0 });
-    if (d.success) { showToast(`${name} suspended ✓`,'success'); loadParents(parentPage); }
-    else showToast(d.error||'Failed','error');
-  } catch { showToast('Network error','error'); }
+async function loadJobs() {
+  const r = await api('get_jobs');
+  if (!r.success) return;
+  const jobs = r.data;
+  document.getElementById('jobCount').textContent = jobs.length + ' job(s)';
+  const tbody = document.getElementById('jobTable');
+  tbody.innerHTML = jobs.length === 0
+    ? '<tr><td colspan="7"><div class="empty"><div class="empty-icon">💼</div>No jobs yet</div></td></tr>'
+    : jobs.map(j => `<tr>
+        <td>#${j.id}</td>
+        <td>${esc((j.parent_fname||'')+' '+(j.parent_lname||''))}</td>
+        <td>${j.sitter_fname ? esc(j.sitter_fname+' '+j.sitter_lname) : '<span style="color:#9b9fae">Unassigned</span>'}</td>
+        <td><span class="badge badge-${j.status==='Sitter hired'?'active':'pending'}">${esc(j.status||'Open')}</span></td>
+        <td>${j.kids||'—'}</td>
+        <td>${j.charge_amt?'$'+j.charge_amt:'—'}</td>
+        <td>${fmtDate(j.post_time, true)}</td>
+      </tr>`).join('');
 }
 
-async function quickActivateParent(id, name) {
-  try {
-    const d = await api('admin_update_parent', { parent_id: id, is_active: 1 });
-    if (d.success) { showToast(`${name} activated ✓`,'success'); loadParents(parentPage); }
-    else showToast(d.error||'Failed','error');
-  } catch { showToast('Network error','error'); }
-}
-
-// ── SHARED PAGINATION ─────────────────────────────────────────
-function renderPagination(containerId, totalPages, current, loadFn) {
-  const el = document.getElementById(containerId);
-  if (totalPages <= 1) { el.innerHTML = ''; return; }
-  let h = `<button class="page-btn" onclick="${loadFn.name}(${current-1})" ${current===1?'disabled':''}>←</button>`;
-  for (let i = 1; i <= totalPages; i++) {
-    if (i===1||i===totalPages||Math.abs(i-current)<=2)
-      h += `<button class="page-btn ${i===current?'active':''}" onclick="${loadFn.name}(${i})">${i}</button>`;
-    else if (Math.abs(i-current)===3)
-      h += `<span style="color:var(--muted);padding:0 4px">…</span>`;
-  }
-  h += `<button class="page-btn" onclick="${loadFn.name}(${current+1})" ${current===totalPages?'disabled':''}>→</button>`;
-  el.innerHTML = h;
-}
-
-// ── JOB STATUS BADGE ──────────────────────────────────────────
-function jobBadge(status) {
-  const map = {
-    'Open':'badge-open','Sitter hired':'badge-hired','Sitter offered':'badge-offered',
-    'Sitter arrived':'badge-arrived','In progress':'badge-progress',
-    'Complete':'badge-complete','Cancelled':'badge-cancelled','Closed':'badge-closed',
+function confirmAction(action, table, id, name) {
+  pendingAction = { action, table, id, name };
+  const icons  = { delete:'🗑️', disable:'⛔', enable:'✅', approve:'✅' };
+  const titles = { delete:'Delete User', disable:'Disable Account', enable:'Enable Account', approve:'Approve Sitter' };
+  const bodies = {
+    delete:  `You are about to <strong>permanently delete</strong> <strong>${name}</strong> from the database.<br><br>⚠️ This CANNOT be undone.`,
+    disable: `Disable <strong>${name}</strong>'s account? They will not be able to log in.`,
+    enable:  `Enable <strong>${name}</strong>'s account? They will be able to log in immediately.`,
+    approve: `Approve <strong>${name}</strong> as a verified sitter?`,
   };
-  return `<span class="badge ${map[status]||'badge-closed'}">${status||'—'}</span>`;
+  const btnColors = { delete:'btn-danger', disable:'btn-warning', enable:'btn-success', approve:'btn-success' };
+  const btnLabels = { delete:'Yes, Delete Permanently', disable:'Yes, Disable', enable:'Yes, Enable', approve:'Yes, Approve' };
+
+  document.getElementById('modalIcon').textContent   = icons[action];
+  document.getElementById('modalTitle').textContent  = titles[action];
+  document.getElementById('modalBody').innerHTML     = bodies[action];
+  const btn = document.getElementById('modalConfirmBtn');
+  btn.className   = 'btn ' + btnColors[action];
+  btn.textContent = btnLabels[action];
+  document.getElementById('confirmModal').classList.add('open');
 }
 
-// ── DATE FORMAT ───────────────────────────────────────────────
-function fmtDate(dt) {
-  if (!dt) return '—';
-  try {
-    const d = new Date(dt.replace(' ','T') + (dt.includes('Z')?'':'Z'));
-    return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'})
-      + ' ' + d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
-  } catch { return dt; }
+function closeModal() {
+  document.getElementById('confirmModal').classList.remove('open');
+  pendingAction = null;
 }
 
-// ── MODAL HELPERS ─────────────────────────────────────────────
-function closeModal(id) { document.getElementById(id).classList.remove('open'); }
-document.querySelectorAll('.modal-backdrop').forEach(el => {
-  el.addEventListener('click', e => { if(e.target===el) el.classList.remove('open'); });
-});
+async function executeAction() {
+  if (!pendingAction) return;
+  closeModal();
+  const { action, table, id, name } = pendingAction;
+  const r = await api('user_action', { action, table, id });
+  if (r.success) {
+    const msgs = {
+      delete:  `✅ ${name} permanently deleted`,
+      disable: `⛔ ${name} disabled`,
+      enable:  `✅ ${name} enabled`,
+      approve: `✅ ${name} approved`,
+    };
+    showToast(msgs[action], action === 'delete' || action === 'disable' ? 'error' : 'success');
+    const active = document.querySelector('.nav-item.active')?.id?.replace('nav-','');
+    if (active) showPage(active);
+    loadDashboard();
+  } else {
+    showToast('Error: ' + (r.error || 'Action failed'), 'error');
+  }
+}
 
-// ── TOAST ─────────────────────────────────────────────────────
-let toastTimer;
-function showToast(msg, type='success') {
+async function bulkAction(table, action) {
+  const tbody  = table === 'parents' ? 'parentTable' : 'sitterTable';
+  const checks = document.querySelectorAll('#' + tbody + ' .row-check:checked');
+  if (checks.length === 0) { showToast('Please select at least one user', 'error'); return; }
+  const ids = Array.from(checks).map(c => parseInt(c.dataset.id));
+  const word = { delete:'permanently delete', disable:'disable', enable:'enable' }[action];
+  if (!confirm(`${word.charAt(0).toUpperCase()+word.slice(1)} ${ids.length} selected user(s)?${action==='delete'?'\n\n⚠️ This CANNOT be undone!':''}`)) return;
+  let ok = 0, fail = 0;
+  for (const id of ids) {
+    const r = await api('user_action', { action, table, id });
+    r.success ? ok++ : fail++;
+  }
+  showToast(`${ok} user(s) ${action}d${fail>0?' ('+fail+' failed)':''}`, fail > 0 ? 'error' : 'success');
+  showPage(table);
+  loadDashboard();
+}
+
+function filterTable(tableId, query) {
+  const q = query.toLowerCase();
+  document.querySelectorAll('#' + tableId + ' tr[data-search]').forEach(tr => {
+    tr.style.display = tr.dataset.search.includes(q) ? '' : 'none';
+  });
+}
+
+function toggleAll(tableId, master) {
+  document.querySelectorAll('#' + tableId + ' .row-check').forEach(c => c.checked = master.checked);
+}
+
+function initials(f, l) { return ((f||'?')[0] + (l||'?')[0]).toUpperCase(); }
+function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : '—'; }
+function esc(s) { return s ? String(s).replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') : ''; }
+function fmtDate(ts, unix) {
+  if (!ts) return '—';
+  const d = unix ? new Date(ts*1000) : new Date(parseInt(ts)*1000);
+  if (isNaN(d)) return String(ts);
+  return d.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+}
+function showToast(msg, type) {
   const t = document.getElementById('toast');
-  t.textContent = msg; t.className = `toast ${type} show`;
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove('show'), 3500);
+  t.textContent = msg;
+  t.className = 'toast ' + (type||'') + ' show';
+  setTimeout(() => t.classList.remove('show'), 3500);
 }
-
-// ── UTILS ─────────────────────────────────────────────────────
-function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-
-// ── SEARCH ON ENTER ───────────────────────────────────────────
-document.getElementById('searchJobId').addEventListener('keydown',  e => { if(e.key==='Enter') loadJobs(1); });
-document.getElementById('filterStatus').addEventListener('change',  () => loadJobs(1));
-document.getElementById('searchSitter').addEventListener('keydown', e => { if(e.key==='Enter') loadSitters(1); });
-document.getElementById('searchParent').addEventListener('keydown', e => { if(e.key==='Enter') loadParents(1); });
-
-// ── AUTO REFRESH ──────────────────────────────────────────────
-setInterval(() => { if(sessionStorage.getItem('s4m_admin')==='1') loadStats(); }, 60_000);
 </script>
 </body>
 </html>

@@ -292,6 +292,37 @@ $isAuthed = !empty($_SESSION['admin_auth']);
     <div class="pagination" id="pagination"></div>
   </div>
 
+  <!-- PAYOUTS PANEL -->
+  <div class="panel" style="margin-top:24px">
+    <div class="panel-header">
+      <h2>💸 Payout Requests</h2>
+      <div class="controls">
+        <select id="filterPayoutStatus">
+          <option value="pending">Pending</option>
+          <option value="approved">Approved</option>
+          <option value="paid">Paid</option>
+          <option value="rejected">Rejected</option>
+          <option value="all">All</option>
+        </select>
+        <button class="btn btn-primary" onclick="loadPayouts(1)">🔍 Filter</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th><th>Sitter</th><th>Amount</th><th>Bank</th><th>Account</th>
+            <th>Requested</th><th>Status</th><th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="payoutsBody">
+          <tr><td colspan="8" class="empty"><div class="icon">⏳</div>Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="pagination" id="payoutPagination"></div>
+  </div>
+
   <!-- SITTERS PANEL -->
   <div class="panel" style="margin-top:24px">
     <div class="panel-header">
@@ -406,6 +437,32 @@ $isAuthed = !empty($_SESSION['admin_auth']);
   </div>
 </div>
 
+<!-- ── PAYOUT MODAL ── -->
+<div class="modal-backdrop" id="payoutModal">
+  <div class="modal">
+    <h3>💸 Payout #<span id="payoutModalId"></span> — <span id="payoutModalName"></span>
+      <button class="modal-close" onclick="closeModal('payoutModal')">×</button>
+    </h3>
+    <div id="payoutModalInfo" style="background:#f9f9f7;border-radius:8px;padding:12px;margin-bottom:14px;font-size:13px;line-height:1.7"></div>
+    <div class="form-group">
+      <label>Update Status</label>
+      <select id="payoutNewStatus">
+        <option value="approved">Approved (processing)</option>
+        <option value="paid">Paid ✓</option>
+        <option value="rejected">Rejected</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Admin Notes</label>
+      <textarea id="payoutAdminNotes" placeholder="Reference number, transfer ID, or reason for rejection…"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('payoutModal')" style="background:#f3f4f6">Cancel</button>
+      <button class="btn btn-primary" onclick="savePayoutEdit()">💾 Update</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── SITTER EDIT MODAL ── -->
 <div class="modal-backdrop" id="sitterModal">
   <div class="modal">
@@ -479,13 +536,16 @@ let editingJobId = null;
 let cancellingJobId = null;
 let editingSitterId = null;
 let editingParentId = null;
+let editingPayoutId = null;
 let currentSitterPage = 1;
 let currentParentPage = 1;
+let currentPayoutPage = 1;
 
 // ── INIT ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   loadStats();
   loadJobs(1);
+  loadPayouts(1);
   loadSitters(1);
   loadParents(1);
 
@@ -500,6 +560,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('searchParent').addEventListener('keydown', e => {
     if (e.key === 'Enter') loadParents(1);
   });
+  document.getElementById('filterPayoutStatus').addEventListener('change', () => loadPayouts(1));
 });
 
 // ── API HELPER ───────────────────────────────────────────────
@@ -745,6 +806,87 @@ function escHtml(s) {
 
 // ── AUTO REFRESH STATS ───────────────────────────────────────
 setInterval(loadStats, 60_000);
+
+// ── PAYOUTS ──────────────────────────────────────────────────
+async function loadPayouts(page = 1) {
+  currentPayoutPage = page;
+  const status = document.getElementById('filterPayoutStatus').value;
+  document.getElementById('payoutsBody').innerHTML =
+    '<tr><td colspan="8" class="empty"><div class="icon">⏳</div>Loading…</td></tr>';
+  try {
+    const d = await api('admin_list_payouts', { status, page });
+    if (!d.success) { showToast(d.error || 'Failed to load payouts', 'error'); return; }
+    const { payouts, total_pages } = d.data;
+    if (!payouts || !payouts.length) {
+      document.getElementById('payoutsBody').innerHTML =
+        '<tr><td colspan="8" class="empty"><div class="icon">💸</div>No payout requests</td></tr>';
+    } else {
+      const statusBadgePayout = s => {
+        const map = { pending:'badge-open', approved:'badge-hired', paid:'badge-complete', rejected:'badge-cancelled' };
+        return `<span class="badge ${map[s]||''}">${s}</span>`;
+      };
+      document.getElementById('payoutsBody').innerHTML = payouts.map(p => `
+        <tr>
+          <td><strong>#${p.id}</strong></td>
+          <td>${escHtml(p.fname+' '+p.lname)}<br><small style="color:var(--muted)">${escHtml(p.email||'')}</small></td>
+          <td><strong>$${parseFloat(p.amount).toFixed(2)}</strong></td>
+          <td>${escHtml(p.bank_name||'—')}</td>
+          <td>${escHtml(p.account_masked||'—')}</td>
+          <td style="white-space:nowrap">${fmtDate(p.requested_at)}</td>
+          <td>${statusBadgePayout(p.status)}</td>
+          <td>
+            ${p.status === 'paid' || p.status === 'rejected' ? '<span style="color:var(--muted);font-size:12px">Done</span>' :
+              `<button class="btn btn-primary btn-sm" onclick="openPayoutEdit(${JSON.stringify(p).replace(/"/g,'&quot;')})">✏️ Process</button>`}
+          </td>
+        </tr>`).join('');
+    }
+    renderPayoutPagination(total_pages, page);
+  } catch(e) { showToast('Network error', 'error'); }
+}
+
+function renderPayoutPagination(totalPages, current) {
+  if (totalPages <= 1) { document.getElementById('payoutPagination').innerHTML = ''; return; }
+  let html = `<button class="page-btn" onclick="loadPayouts(${current-1})" ${current===1?'disabled':''}>←</button>`;
+  for (let i = 1; i <= totalPages; i++) {
+    html += `<button class="page-btn ${i===current?'active':''}" onclick="loadPayouts(${i})">${i}</button>`;
+  }
+  html += `<button class="page-btn" onclick="loadPayouts(${current+1})" ${current===totalPages?'disabled':''}>→</button>`;
+  document.getElementById('payoutPagination').innerHTML = html;
+}
+
+function openPayoutEdit(p) {
+  editingPayoutId = p.id;
+  document.getElementById('payoutModalId').textContent = p.id;
+  document.getElementById('payoutModalName').textContent = `${p.fname} ${p.lname}`;
+  document.getElementById('payoutModalInfo').innerHTML =
+    `<strong>Amount:</strong> $${parseFloat(p.amount).toFixed(2)}<br>` +
+    `<strong>Bank:</strong> ${escHtml(p.bank_name||'—')}<br>` +
+    `<strong>Routing:</strong> ${escHtml(p.routing_number||'—')}<br>` +
+    `<strong>Account:</strong> ${escHtml(p.account_masked||'—')}<br>` +
+    `<strong>Requested:</strong> ${fmtDate(p.requested_at)}`;
+  document.getElementById('payoutNewStatus').value = p.status === 'approved' ? 'paid' : 'approved';
+  document.getElementById('payoutAdminNotes').value = p.admin_notes || '';
+  document.getElementById('payoutModal').classList.add('open');
+}
+
+async function savePayoutEdit() {
+  if (!editingPayoutId) return;
+  try {
+    const d = await api('admin_update_payout', {
+      payout_id:   editingPayoutId,
+      status:      document.getElementById('payoutNewStatus').value,
+      admin_notes: document.getElementById('payoutAdminNotes').value,
+    });
+    if (d.success) {
+      showToast('Payout updated ✓ — sitter notified via push');
+      closeModal('payoutModal');
+      loadPayouts(currentPayoutPage);
+      loadStats();
+    } else {
+      showToast(d.error || 'Update failed', 'error');
+    }
+  } catch { showToast('Network error', 'error'); }
+}
 
 // ── SITTERS ──────────────────────────────────────────────────
 async function loadSitters(page = 1) {
