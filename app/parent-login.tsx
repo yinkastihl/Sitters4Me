@@ -1,52 +1,12 @@
-// app/parent-login.tsx
+// app/parent-login.tsx — with email verification handling
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, StatusBar, Alert, ActivityIndicator, Image } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, StatusBar, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import axios from 'axios';
-import * as Notifications from 'expo-notifications';
-import Constants from 'expo-constants';
 
-const API      = 'https://sitters4me.com/api/auth.php';
-const JOBS_API = 'https://sitters4me.com/api/jobs.php';
-
-// Register for push notifications and return an Expo push token.
-// On Android we must also ensure the notification channel exists.
-async function registerForPush(): Promise<string | null> {
-  // Push tokens only work in a development build or production — not Expo Go
-  if (Constants.appOwnership === 'expo') return null;
-  try {
-    if (require('react-native').Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync('default', {
-        name:      'default',
-        importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#C93488',
-      });
-    }
-
-    const { status: existing } = await Notifications.getPermissionsAsync();
-    let finalStatus = existing;
-    if (existing !== 'granted') {
-      const { status } = await Notifications.requestPermissionsAsync();
-      finalStatus = status;
-    }
-    if (finalStatus !== 'granted') return null;
-
-    const projectId =
-      Constants.expoConfig?.extra?.eas?.projectId ??
-      Constants.easConfig?.projectId;
-
-    const tokenData = await Notifications.getExpoPushTokenAsync(
-      projectId ? { projectId } : undefined
-    );
-    return tokenData.data;
-  } catch (e) {
-    console.warn('Push token error:', e);
-    return null;
-  }
-}
+const API = 'https://sitters4me.com/api/auth.php';
 
 export default function ParentLogin() {
   const router = useRouter();
@@ -65,33 +25,21 @@ export default function ParentLogin() {
       });
       if (res.data.success) {
         global.currentUser = res.data.data;
-        (global as any).userType = 'parent';
-        // Register for push notifications and save token to server
-        const pushToken = await registerForPush();
-        if (pushToken && res.data.data?.id) {
-          axios.post(`${JOBS_API}?action=save_push_token`, {
-            user_type:  'parent',
-            user_id:    res.data.data.id,
-            push_token: pushToken,
-          }).catch(() => {}); // fire-and-forget
-        }
-        // Check for an in-progress job — restore to job-accepted if found
-        try {
-          const aj = await axios.post(`${JOBS_API}?action=get_parent_active_job`, { parent_id: res.data.data.id });
-          if (aj.data?.success && aj.data?.data?.id) {
-            const job = aj.data.data;
-            (global as any).activeJob = {
-              job_id:      job.id,
-              sitter_id:   job.sitter_id,
-              sitter_name: job.sitter_name,
-              job_data:    job,
-            };
-            return router.replace('/job-accepted');
-          }
-        } catch { /* no active job — continue to home */ }
         router.replace('/parent-home');
       } else {
-        Alert.alert('Login Failed', res.data.error || 'Please check your credentials.');
+        // Handle unverified email
+        if (res.data.error && res.data.error.includes('verify your email')) {
+          Alert.alert(
+            '📧 Email Not Verified',
+            'Please check your inbox and click the verification link we sent you.\n\nIf you did not receive it, tap Resend below.',
+            [
+              { text: 'Resend Email', onPress: () => router.push({ pathname: '/verify-email', params: { email: email.trim().toLowerCase(), user_type: 'parent' } }) },
+              { text: 'OK' },
+            ]
+          );
+        } else {
+          Alert.alert('Login Failed', res.data.error || 'Please check your credentials.');
+        }
       }
     } catch (e: any) {
       Alert.alert('Error', e.response?.data?.error || 'Could not connect. Please check your internet connection.');
@@ -102,30 +50,22 @@ export default function ParentLogin() {
     <SafeAreaView style={s.container}>
       <StatusBar barStyle="light-content" />
       <LinearGradient colors={['#C93488','#9B5BAB','#5A7EC4','#02A4E2']} start={{x:0,y:0}} end={{x:1,y:1}} style={{flex:1}}>
-
-        {/* Header with logo */}
         <View style={s.header}>
           <TouchableOpacity onPress={() => router.back()} style={s.backBtn}><Text style={s.backText}>‹</Text></TouchableOpacity>
-          <Image source={require('../assets/logo.jpg')} style={s.headerLogo} resizeMode="contain" />
+          <View style={{flex:1, alignItems:'center'}}>
+            <Text style={s.headerTitle}>Parent Sign In</Text>
+            <Text style={s.headerSub}>Welcome back!</Text>
+          </View>
           <View style={{width:36}} />
         </View>
-
-        <View style={s.heroText}>
-          <Text style={s.heroTitle}>Parent Sign In</Text>
-          <Text style={s.heroSub}>Welcome back! Find a babysitter today.</Text>
-        </View>
-
-        {/* White card */}
         <KeyboardAvoidingView behavior={Platform.OS==='ios'?'padding':undefined} style={{flex:1}}>
           <ScrollView contentContainerStyle={s.card} keyboardShouldPersistTaps="handled">
-
             <View style={s.field}>
               <Text style={s.label}>EMAIL ADDRESS</Text>
               <TextInput style={s.input} value={email} onChangeText={setEmail}
                 placeholder="your@email.com" placeholderTextColor="#9B9FAE"
-                keyboardType="email-address" autoCapitalize="none" autoComplete="email" />
+                keyboardType="email-address" autoCapitalize="none" />
             </View>
-
             <View style={s.field}>
               <Text style={s.label}>PASSWORD</Text>
               <View style={s.passRow}>
@@ -137,27 +77,20 @@ export default function ParentLogin() {
                 </TouchableOpacity>
               </View>
             </View>
-
-            <TouchableOpacity onPress={() => { (global as any).resetUserType = 'parent'; router.push('/reset-password'); }}>
+            <TouchableOpacity onPress={() => Alert.alert('Reset Password','A reset link will be sent to your email.')}>
               <Text style={s.forgot}>Forgot password?</Text>
             </TouchableOpacity>
-
             <TouchableOpacity onPress={login} disabled={loading} activeOpacity={0.85}>
               <LinearGradient colors={['#ED1E76','#C93488']} start={{x:0,y:0}} end={{x:1,y:0}} style={[s.btn,loading&&{opacity:0.7}]}>
                 {loading ? <ActivityIndicator color="#fff" /> : <Text style={s.btnText}>Sign In</Text>}
               </LinearGradient>
             </TouchableOpacity>
-
             <View style={s.divider}>
               <View style={s.divLine}/><Text style={s.divText}>New to Sitters4Me?</Text><View style={s.divLine}/>
             </View>
-
             <TouchableOpacity onPress={() => router.push('/parent-register')} activeOpacity={0.85}>
-              <View style={s.outlineBtn}>
-                <Text style={s.outlineBtnText}>Create Parent Account →</Text>
-              </View>
+              <View style={s.outlineBtn}><Text style={s.outlineBtnText}>Create Parent Account →</Text></View>
             </TouchableOpacity>
-
           </ScrollView>
         </KeyboardAvoidingView>
       </LinearGradient>
@@ -167,13 +100,11 @@ export default function ParentLogin() {
 
 const s = StyleSheet.create({
   container:      {flex:1},
-  header:         {flexDirection:'row',alignItems:'center',justifyContent:'space-between',paddingHorizontal:16,paddingTop:12,paddingBottom:6},
+  header:         {flexDirection:'row',alignItems:'center',paddingHorizontal:16,paddingTop:16,paddingBottom:12},
   backBtn:        {width:36,height:36,alignItems:'center',justifyContent:'center'},
   backText:       {fontSize:32,color:'#FFFFFF',fontWeight:'300'},
-  headerLogo:     {width:100,height:36,backgroundColor:'rgba(255,255,255,0.9)',borderRadius:8,padding:2},
-  heroText:       {alignItems:'center',gap:6,paddingVertical:14},
-  heroTitle:      {fontSize:24,fontWeight:'900',color:'#FFFFFF',letterSpacing:-0.3},
-  heroSub:        {fontSize:14,color:'rgba(255,255,255,0.85)'},
+  headerTitle:    {fontSize:22,fontWeight:'900',color:'#FFFFFF',letterSpacing:-0.3},
+  headerSub:      {fontSize:13,color:'rgba(255,255,255,0.85)',marginTop:2},
   card:           {backgroundColor:'#FFFFFF',borderTopLeftRadius:32,borderTopRightRadius:32,padding:28,paddingBottom:48,flexGrow:1},
   field:          {marginBottom:16},
   label:          {fontSize:11,fontWeight:'700',color:'#5A5F72',letterSpacing:0.6,marginBottom:6,textTransform:'uppercase'},

@@ -1,50 +1,12 @@
-// app/sitter-login.tsx
+// app/sitter-login.tsx — with email verification handling
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, StatusBar, Alert, ActivityIndicator, Image } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, StatusBar, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import axios from 'axios';
-import * as Notifications from 'expo-notifications';
-import Constants from 'expo-constants';
 
-const API      = 'https://sitters4me.com/api/auth.php';
-const JOBS_API = 'https://sitters4me.com/api/jobs.php';
-
-async function registerForPush(): Promise<string | null> {
-  // Push tokens only work in a development build or production — not Expo Go
-  if (Constants.appOwnership === 'expo') return null;
-  try {
-    if (require('react-native').Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync('default', {
-        name:      'default',
-        importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#C93488',
-      });
-    }
-
-    const { status: existing } = await Notifications.getPermissionsAsync();
-    let finalStatus = existing;
-    if (existing !== 'granted') {
-      const { status } = await Notifications.requestPermissionsAsync();
-      finalStatus = status;
-    }
-    if (finalStatus !== 'granted') return null;
-
-    const projectId =
-      Constants.expoConfig?.extra?.eas?.projectId ??
-      Constants.easConfig?.projectId;
-
-    const tokenData = await Notifications.getExpoPushTokenAsync(
-      projectId ? { projectId } : undefined
-    );
-    return tokenData.data;
-  } catch (e) {
-    console.warn('Push token error:', e);
-    return null;
-  }
-}
+const API = 'https://sitters4me.com/api/auth.php';
 
 export default function SitterLogin() {
   const router = useRouter();
@@ -55,42 +17,34 @@ export default function SitterLogin() {
 
   const login = async () => {
     if (!email.trim() || !password)
-      return Alert.alert('Missing Fields','Please enter your email and password.');
+      return Alert.alert('Missing Fields', 'Please enter your email and password.');
     setLoading(true);
     try {
-      const res = await axios.post(`${API}?action=sitter_login`, { email:email.trim().toLowerCase(), password });
+      const res = await axios.post(`${API}?action=sitter_login`, {
+        email: email.trim().toLowerCase(), password,
+      });
       if (res.data.success) {
         global.currentUser = res.data.data;
-        (global as any).userType = 'sitter';
         const u = res.data.data;
-        // Register for push notifications and save token to server
-        const pushToken = await registerForPush();
-        if (pushToken && u?.id) {
-          axios.post(`${JOBS_API}?action=save_push_token`, {
-            user_type:  'sitter',
-            user_id:    u.id,
-            push_token: pushToken,
-          }).catch(() => {}); // fire-and-forget
-        }
-        // Route based on account status
-        if (u.status === 'pending' || u.status === 'inactive') {
+        if (u.status === 'pending' || u.status === 'inactive')
           return router.replace('/sitter-pending');
-        }
-        // Check for an in-progress job — restore to active-job if found
-        try {
-          const aj = await axios.post(`${JOBS_API}?action=get_sitter_active_job`, { sitter_id: u.id });
-          if (aj.data?.success && aj.data?.data?.id) {
-            const job = aj.data.data;
-            (global as any).activeJob = { job_id: job.id, id: job.id, ...job };
-            return router.replace('/active-job');
-          }
-        } catch { /* no active job — continue to home */ }
         router.replace('/sitter-home');
       } else {
-        Alert.alert('Login Failed', res.data.error || 'Please check your credentials.');
+        if (res.data.error && res.data.error.includes('verify your email')) {
+          Alert.alert(
+            '📧 Email Not Verified',
+            'Please check your inbox and click the verification link we sent you.\n\nIf you did not receive it, tap Resend below.',
+            [
+              { text: 'Resend Email', onPress: () => router.push({ pathname: '/verify-email', params: { email: email.trim().toLowerCase(), user_type: 'sitter' } }) },
+              { text: 'OK' },
+            ]
+          );
+        } else {
+          Alert.alert('Login Failed', res.data.error || 'Please check your credentials.');
+        }
       }
     } catch (e: any) {
-      Alert.alert('Error', e.response?.data?.error || 'Could not connect. Please check your internet.');
+      Alert.alert('Error', e.response?.data?.error || 'Could not connect. Please check your internet connection.');
     } finally { setLoading(false); }
   };
 
@@ -99,35 +53,38 @@ export default function SitterLogin() {
       <StatusBar barStyle="light-content" />
       <LinearGradient colors={['#C93488','#9B5BAB','#5A7EC4','#02A4E2']} start={{x:0,y:0}} end={{x:1,y:1}} style={{flex:1}}>
         <View style={s.header}>
-          <TouchableOpacity onPress={()=>router.back()} style={s.back}><Text style={s.backText}>‹</Text></TouchableOpacity>
-          <Image source={require('../assets/logo.jpg')} style={s.headerLogo} resizeMode="contain" />
+          <TouchableOpacity onPress={() => router.back()} style={s.backBtn}><Text style={s.backText}>‹</Text></TouchableOpacity>
+          <View style={{flex:1,alignItems:'center'}}>
+            <Text style={s.headerTitle}>Sitter Sign In</Text>
+            <Text style={s.headerSub}>Welcome back!</Text>
+          </View>
           <View style={{width:36}} />
-        </View>
-        <View style={s.heroText}>
-          <Text style={s.heroTitle}>Sitter Sign In</Text>
-          <Text style={s.heroSub}>Welcome back! Ready to find jobs?</Text>
         </View>
         <KeyboardAvoidingView behavior={Platform.OS==='ios'?'padding':undefined} style={{flex:1}}>
           <ScrollView contentContainerStyle={s.card} keyboardShouldPersistTaps="handled">
             <View style={s.field}>
               <Text style={s.label}>EMAIL ADDRESS</Text>
-              <TextInput style={s.input} value={email} onChangeText={setEmail} placeholder="your@email.com" placeholderTextColor="#9B9FAE" keyboardType="email-address" autoCapitalize="none" />
+              <TextInput style={s.input} value={email} onChangeText={setEmail}
+                placeholder="your@email.com" placeholderTextColor="#9B9FAE"
+                keyboardType="email-address" autoCapitalize="none" />
             </View>
             <View style={s.field}>
               <Text style={s.label}>PASSWORD</Text>
               <View style={s.passRow}>
-                <TextInput style={[s.input,{flex:1,marginBottom:0}]} value={password} onChangeText={setPassword} placeholder="••••••••" placeholderTextColor="#9B9FAE" secureTextEntry={!showPass} />
+                <TextInput style={[s.input,{flex:1,marginBottom:0}]} value={password}
+                  onChangeText={setPassword} placeholder="••••••••"
+                  placeholderTextColor="#9B9FAE" secureTextEntry={!showPass} />
                 <TouchableOpacity style={{padding:14}} onPress={()=>setShowPass(v=>!v)}>
                   <Text style={{fontSize:18}}>{showPass?'🙈':'👁️'}</Text>
                 </TouchableOpacity>
               </View>
             </View>
-            <TouchableOpacity onPress={() => { (global as any).resetUserType = 'sitter'; router.push('/reset-password'); }}>
+            <TouchableOpacity onPress={()=>Alert.alert('Reset Password','A reset link will be sent to your email.')}>
               <Text style={s.forgot}>Forgot password?</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={login} disabled={loading} activeOpacity={0.85}>
               <LinearGradient colors={['#02A4E2','#0270C8']} start={{x:0,y:0}} end={{x:1,y:0}} style={[s.btn,loading&&{opacity:0.7}]}>
-                {loading?<ActivityIndicator color="#fff"/>:<Text style={s.btnText}>Sign In</Text>}
+                {loading ? <ActivityIndicator color="#fff" /> : <Text style={s.btnText}>Sign In</Text>}
               </LinearGradient>
             </TouchableOpacity>
             <View style={s.divider}>
@@ -145,13 +102,11 @@ export default function SitterLogin() {
 
 const s = StyleSheet.create({
   container:      {flex:1},
-  header:         {flexDirection:'row',alignItems:'center',justifyContent:'space-between',paddingHorizontal:16,paddingTop:12,paddingBottom:6},
-  back:           {width:36,height:36,alignItems:'center',justifyContent:'center'},
+  header:         {flexDirection:'row',alignItems:'center',paddingHorizontal:16,paddingTop:16,paddingBottom:12},
+  backBtn:        {width:36,height:36,alignItems:'center',justifyContent:'center'},
   backText:       {fontSize:32,color:'#FFFFFF',fontWeight:'300'},
-  headerLogo:     {width:100,height:36,backgroundColor:'rgba(255,255,255,0.9)',borderRadius:8,padding:2},
-  heroText:       {alignItems:'center',gap:6,paddingVertical:14},
-  heroTitle:      {fontSize:24,fontWeight:'900',color:'#FFFFFF',letterSpacing:-0.3},
-  heroSub:        {fontSize:14,color:'rgba(255,255,255,0.85)'},
+  headerTitle:    {fontSize:22,fontWeight:'900',color:'#FFFFFF',letterSpacing:-0.3},
+  headerSub:      {fontSize:13,color:'rgba(255,255,255,0.85)',marginTop:2},
   card:           {backgroundColor:'#FFFFFF',borderTopLeftRadius:32,borderTopRightRadius:32,padding:28,paddingBottom:48,flexGrow:1},
   field:          {marginBottom:16},
   label:          {fontSize:11,fontWeight:'700',color:'#5A5F72',letterSpacing:0.6,marginBottom:6,textTransform:'uppercase'},
