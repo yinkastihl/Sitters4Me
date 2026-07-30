@@ -1,424 +1,177 @@
-// app/active-job.tsx — shown to SITTER after accepting a job
+// app/active-job.tsx — Sitter active job with live location push
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  StatusBar, Alert, Linking, Image, ActivityIndicator, Vibration,
-  Modal, TextInput, KeyboardAvoidingView, Platform,
+  StatusBar, Alert, Linking, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import axios from 'axios';
-import { saveActiveSession, clearActiveSession } from './index';
 
-const JOBS_API   = 'https://sitters4me.com/api/jobs.php';
-const STRIPE_API = 'https://sitters4me.com/api/stripe.php';
-const LOC_INTERVAL_MS = 10000; // send GPS every 10 seconds while travelling
+const JOBS_API     = 'https://sitters4me.com/api/jobs.php';
+const LOC_INTERVAL = 10000; // push location every 10 seconds
 
 export default function ActiveJob() {
-  const router      = useRouter();
-  const timerRef       = useRef<any>(null);
-  const locRef         = useRef<any>(null);   // Location.watchPositionAsync subscription
-  const locSendRef     = useRef<any>(null);   // setInterval for sending location
-  const statusPollRef  = useRef<any>(null);   // polls job_status to detect cancellation
-  const chatPollRef    = useRef<any>(null);   // polls unread message count
-  const jobIdRef       = useRef<number>(0);   // so the poll closure always has the current id
-  const cancelledRef   = useRef(false);       // prevent double-alert
+  const router    = useRouter();
+  const timerRef  = useRef<any>(null);
+  const locRef    = useRef<any>(null);
 
-  const [job, setJob]               = useState<any>(null);
-  const [loading, setLoading]       = useState(true);
-  const [status, setStatus]         = useState<'travelling'|'arrived'|'started'|'done'>('travelling');
-  const [elapsed, setElapsed]       = useState(0);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [childProfiles, setChildProfiles]   = useState<any[]>([]);
-  const [showChildInfo, setShowChildInfo]   = useState(false);
+  const [job,     setJob]     = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [status,  setStatus]  = useState<'travelling'|'arrived'|'started'|'done'>('travelling');
+  const [elapsed, setElapsed] = useState(0);
 
-  // Two-way rating: sitter rates parent after job
-  const [showRateParent, setShowRateParent] = useState(false);
-  const [parentStars,    setParentStars]    = useState(5);
-  const [parentNote,     setParentNote]     = useState('');
-  const [ratingDone,     setRatingDone]     = useState(false);
-  const [submittingRate, setSubmittingRate] = useState(false);
-
-  const user = global.currentUser || {};
+  const user  = global.currentUser || {};
+  const rate  = user.minrate || job?.rate || 15;
+  const earnings = ((elapsed / 3600) * rate).toFixed(2);
 
   useEffect(() => {
     loadActiveJob();
-    startLocationTracking();
+    startLocationSharing();
     return () => {
       clearInterval(timerRef.current);
-      clearInterval(locSendRef.current);
-      clearInterval(statusPollRef.current);
-      clearInterval(chatPollRef.current);
-      locRef.current?.remove?.();
+      clearInterval(locRef.current);
     };
   }, []);
 
-  // Poll unread message count every 5 s
-  useEffect(() => {
-    const resolvedJobId = job?.id || job?.job_id || jobIdRef.current;
-    if (!resolvedJobId) return;
-    const poll = async () => {
-      try {
-        const res = await axios.post(`${JOBS_API}?action=get_unread_count`, {
-          job_id:      resolvedJobId,
-          viewer_type: 'sitter',
-        });
-        if (res.data?.success) {
-          const newCount = res.data.data?.unread || 0;
-          setUnreadCount(prev => {
-            if (newCount > prev) Vibration.vibrate(200);
-            return newCount;
-          });
-        }
-      } catch {}
-    };
-    poll();
-    chatPollRef.current = setInterval(poll, 5000);
-    return () => clearInterval(chatPollRef.current);
-  }, [job]);
+  const loadActiveJob = async () => {
+    setLoading(true);
+    try {
+      const res = await axios.post(`${JOBS_API}?action=get_sitter_active_job`, { sitter_id: user.id });
+      if (res.data.success && res.data.data) setJob(res.data.data);
+      else if (global.activeJob) setJob(global.activeJob);
+    } catch { if (global.activeJob) setJob(global.activeJob); }
+    finally { setLoading(false); }
+  };
 
-  // ── Send live GPS to server while sitter is travelling ────────
-  const startLocationTracking = async () => {
+  // Push location to server every 10s so parent can track
+  const startLocationSharing = async () => {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') return;
 
-      // Watch position continuously
-      locRef.current = await Location.watchPositionAsync(
-        { accuracy: Location.Accuracy.High, timeInterval: 5000, distanceInterval: 10 },
-        (loc) => {
-          // Store latest coords in a ref so the interval can read them
-          (locRef as any).lastCoords = { lat: loc.coords.latitude, lng: loc.coords.longitude };
-        }
-      );
-
-      // Send to server every 10 seconds (only while travelling or arrived)
-      locSendRef.current = setInterval(async () => {
-        const coords = (locRef as any).lastCoords;
-        if (!coords || !user.id) return;
-        try {
-          await axios.post(`${JOBS_API}?action=update_sitter_location`, {
-            sitter_id: user.id,
-            lat: coords.lat,
-            lng: coords.lng,
-          });
-        } catch { /* non-critical */ }
-      }, LOC_INTERVAL_MS);
-    } catch { /* location permission denied */ }
+      // Push immediately then every 10s
+      await pushLocation();
+      locRef.current = setInterval(pushLocation, LOC_INTERVAL);
+    } catch {}
   };
 
-  // Stop sending location once the job has started (sitter is at home)
-  useEffect(() => {
-    if (status === 'started' || status === 'done') {
-      clearInterval(locSendRef.current);
-      locRef.current?.remove?.();
-    }
-  }, [status]);
-
-  // Map server job status → internal phase state
-  const resolvePhase = (serverStatus: string): 'travelling' | 'arrived' | 'started' | 'done' => {
-    const st = (serverStatus || '').toLowerCase();
-    if (st === 'in progress')    return 'started';
-    if (st === 'sitter arrived') return 'arrived';
-    if (st === 'complete')       return 'done';
-    return 'travelling'; // 'Sitter hired', 'Sitter offered', anything else
-  };
-
-  const loadActiveJob = async () => {
+  const pushLocation = async () => {
+    if (!user.id) return;
     try {
-      // Get the job that this sitter just accepted
-      const res = await axios.post(`${JOBS_API}?action=get_sitter_active_job`, {
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      await axios.post(`${JOBS_API}?action=update_location`, {
         sitter_id: user.id,
+        lat:       loc.coords.latitude,
+        lng:       loc.coords.longitude,
       });
-      if (res.data?.success && res.data?.data) {
-        const jobData = res.data.data;
-        setJob(jobData);
-
-        // ── Restore the correct phase from server status ──────
-        const phase = resolvePhase(jobData.status);
-        setStatus(phase);
-
-        // ── Restore elapsed timer if job was already started ──
-        if (phase === 'started') {
-          if (jobData.elapsed_seconds > 0) setElapsed(jobData.elapsed_seconds);
-          // Kick off live timer from restored offset
-          timerRef.current = setInterval(() => setElapsed(s => s + 1), 1000);
-        }
-
-        const jid = jobData.id || jobData.job_id;
-        if (jid) {
-          jobIdRef.current = Number(jid);
-          startStatusPoll(Number(jid));
-          saveActiveSession('sitter', Number(jid), user);
-          loadChildProfiles(Number(jid));
-        }
-      } else {
-        // Use global activeJob as fallback
-        if (global.activeJob) {
-          setJob(global.activeJob);
-          const jid = global.activeJob.job_id || global.activeJob.id;
-          if (jid) {
-            jobIdRef.current = Number(jid);
-            startStatusPoll(Number(jid));
-            saveActiveSession('sitter', Number(jid), user);
-            loadChildProfiles(Number(jid));
-          }
-        }
-      }
-    } catch {
-      if (global.activeJob) {
-        setJob(global.activeJob);
-        const jid = global.activeJob.job_id || global.activeJob.id;
-        if (jid) {
-          jobIdRef.current = Number(jid);
-          startStatusPoll(Number(jid));
-          saveActiveSession('sitter', Number(jid), user);
-          loadChildProfiles(Number(jid));
-        }
-      }
-    } finally {
-      setLoading(false);
-    }
+    } catch {}
   };
 
-  const loadChildProfiles = async (jobId: number) => {
+  const fmt = (s: number) => {
+    const h=Math.floor(s/3600), m=Math.floor((s%3600)/60), sec=s%60;
+    return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+  };
+
+  const updateStatus = async (newStatus: string) => {
+    const j = job || global.activeJob;
+    if (!j?.id && !j?.job_id) return;
+    const jobId = j.id || j.job_id;
     try {
-      const res = await axios.post(`${JOBS_API}?action=get_child_profiles`, { job_id: jobId });
-      if (res.data?.success) setChildProfiles(res.data.data || []);
-    } catch { /* non-critical */ }
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      await axios.post(`${JOBS_API}?action=update_job_status`, {
+        job_id:    jobId,
+        sitter_id: user.id,
+        status:    newStatus,
+        lat:       loc.coords.latitude,
+        lng:       loc.coords.longitude,
+      });
+    } catch {}
   };
-
-  // ── Poll job_status every 6s — detect parent cancellation ────
-  const startStatusPoll = (jobId: number) => {
-    if (statusPollRef.current) return; // already polling
-    statusPollRef.current = setInterval(async () => {
-      if (!jobId || cancelledRef.current) return;
-      try {
-        const res = await axios.post(`${JOBS_API}?action=job_status`, { job_id: jobId });
-        const jobStatus = (res.data?.data?.status || '').toLowerCase();
-        if (jobStatus === 'cancelled') {
-          if (cancelledRef.current) return; // prevent double-alert
-          cancelledRef.current = true;
-          clearInterval(statusPollRef.current);
-          clearInterval(timerRef.current);
-          clearInterval(locSendRef.current);
-          locRef.current?.remove?.();
-          Alert.alert(
-            '❌ Booking Cancelled',
-            'The parent has cancelled this booking. You will not be charged and no payment is due.',
-            [{
-              text: 'OK',
-              onPress: () => {
-                global.activeJob = null;
-                clearActiveSession();
-                router.replace('/sitter-home');
-              },
-            }]
-          );
-        }
-      } catch { /* network hiccup — keep polling */ }
-    }, 6000);
-  };
-
-  const startTimer = () => {
-    setElapsed(0);
-    timerRef.current = setInterval(() => setElapsed(e => e + 1), 1000);
-  };
-
-  const stopTimer = () => clearInterval(timerRef.current);
-
-  const fmt = (secs: number) => {
-    const h = Math.floor(secs / 3600);
-    const m = Math.floor((secs % 3600) / 60);
-    const s = secs % 60;
-    return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
-  };
-
-  // Effective rate = sitter base rate + (additional child rate × extra kids beyond first)
-  // All values coerced to Number — PHP returns numeric fields as strings in JSON
-  const kids     = Number(job?.kids) || 1;
-  const baseRate = Number(job?.sitter_minrate ?? job?.rate ?? (user as any).minrate) || 15;
-  const addRate  = Number(job?.additional_child_rate) || 0;
-  const rate     = Number(job?.effective_rate) || (baseRate + addRate * Math.max(0, kids - 1));
-  const earnings = (elapsed / 3600 * rate).toFixed(2);
 
   const handleArrived = async () => {
     setStatus('arrived');
-    // Notify parent via server
-    try {
-      await axios.post(`${JOBS_API}?action=sitter_arrived`, {
-        job_id:    job?.id || job?.job_id,
-        sitter_id: user.id || (user as any).u_id,
-      });
-    } catch (e) { /* non-critical */ }
-    Alert.alert('Arrived! 📍', 'The parent has been notified that you have arrived.');
+    await updateStatus('arrived');
+    Alert.alert('📍 Arrived!', 'The parent has been notified that you have arrived.');
   };
 
   const handleStartJob = async () => {
     setStatus('started');
-    startTimer();
-    // Tell server job has started — records start_time, notifies parent
-    try {
-      await axios.post(`${JOBS_API}?action=start_job`, {
-        job_id:    job?.id || job?.job_id,
-        sitter_id: user.id || (user as any).u_id,
-      });
-    } catch (e) { /* non-critical — timer still runs locally */ }
-    Alert.alert('Job Started! ⏱️', 'Timer is running. The parent has been notified.');
+    await updateStatus('started');
+    setElapsed(0);
+    timerRef.current = setInterval(() => setElapsed(e => e + 1), 1000);
+    Alert.alert('⏱️ Job Started!', 'Timer is running. The parent has been notified.');
   };
 
-  const handleEndJob = () => {
-    const hoursWorked = parseFloat((elapsed / 3600).toFixed(4));
+  const handleEndJob = async () => {
     Alert.alert(
       'End Job?',
-      `Time: ${fmt(elapsed)}\nEarnings: $${earnings}\n\nThis will charge the parent's card and complete the job.`,
+      `Time: ${fmt(elapsed)}\nEarnings: $${earnings}\n\nThis will notify the parent the job is complete.`,
       [
         { text: 'Continue Job', style: 'cancel' },
-        {
-          text: 'End & Charge Parent',
-          onPress: () => processJobEnd(hoursWorked),
-        },
+        { text: 'End Job', onPress: async () => {
+          clearInterval(timerRef.current);
+          setStatus('done');
+          await updateStatus('completed');
+          Alert.alert('Job Complete! 🎉',
+            `Duration: ${fmt(elapsed)}\nEstimated earnings: $${earnings}\n\nPayment will be processed shortly.`,
+            [{ text: 'Rate Parent', onPress: () => router.push({
+                pathname: '/rate-parent',
+                params: { parent_id: job?.parent_id, parent_name: job?.parent_name, job_id: job?.id || job?.job_id }
+              })},
+             { text: 'Done', onPress: () => router.replace('/sitter-home') }]
+          );
+        }},
       ]
     );
-  };
-
-  const processJobEnd = async (hoursWorked: number) => {
-    stopTimer();
-    clearInterval(statusPollRef.current); // no longer need cancellation check
-    setStatus('done');
-    global.activeJob = null;
-    clearActiveSession();
-
-    const jobId    = job?.id || job?.job_id;
-    const kids     = job?.kids || user?.kids || 1;
-
-    // 1. Tell server job stopped (notifies parent, updates DB)
-    // Server returns the authoritative hours (handles timer-not-started case)
-    let billableHours = hoursWorked;
-    try {
-      const stopRes = await axios.post(`${JOBS_API}?action=stop_job`, {
-        job_id:    jobId,
-        sitter_id: user.id || (user as any).u_id,
-        hours:     hoursWorked,
-      });
-      // Use server-computed hours (handles 0-elapsed case with minimum billing)
-      if (stopRes.data?.data?.hours > 0) {
-        billableHours = stopRes.data.data.hours;
-      }
-    } catch { /* stop_job failed — proceed with charge anyway */ }
-
-    // 2. Trigger Stripe charge on parent's saved card
-    try {
-      const res = await axios.post(`${STRIPE_API}?action=charge_parent`, {
-        job_id:    jobId,
-        sitter_id: user.id || (user as any).u_id,
-        hours:     billableHours,  // use server-authoritative hours
-        kids,
-      });
-
-      if (res.data?.success) {
-        const d = res.data.data;
-        Alert.alert(
-          '🎉 Job Complete & Payment Sent!',
-          `Duration:  ${fmt(elapsed)}\n` +
-          `Earnings:  $${d.sitter_payout ?? earnings}\n` +
-          `Charged:   $${d.amount_charged} to parent\n\n` +
-          `Your payout will be deposited within 2 business days.`,
-          [{ text: 'Rate Parent ⭐', onPress: () => setShowRateParent(true) }]
-        );
-      } else {
-        // Payment failed — let sitter know, parent will be contacted
-        Alert.alert(
-          'Job Complete — Payment Pending',
-          `Duration: ${fmt(elapsed)}\nEstimated Earnings: $${earnings}\n\n` +
-          `We could not charge the parent automatically: ${res.data?.error || 'Unknown error'}.\n\n` +
-          `Our team will follow up with the parent directly.`,
-          [
-            { text: 'Skip', style: 'cancel' },
-            { text: 'Rate Parent ⭐', onPress: () => setShowRateParent(true) },
-          ]
-        );
-      }
-    } catch {
-      Alert.alert(
-        'Job Complete',
-        `Duration: ${fmt(elapsed)}\nEarnings: $${earnings}\n\nPayment will be processed shortly.`,
-        [
-          { text: 'Skip', style: 'cancel' },
-          { text: 'Rate Parent ⭐', onPress: () => setShowRateParent(true) },
-        ]
-      );
-    }
   };
 
   const callParent = () => {
     const phone = job?.parent_phone || job?.parent?.phone;
-    if (!phone) {
-      Alert.alert('No Phone Number', 'Parent phone number is not available.');
-      return;
-    }
-    Alert.alert(
-      'Call Parent?',
-      `Call ${job?.parent_name || 'the parent'}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Call', onPress: () => Linking.openURL(`tel:${phone}`) },
-      ]
-    );
+    if (!phone) return Alert.alert('No Phone', 'Parent phone not available.');
+    Linking.openURL(`tel:${phone}`);
   };
 
   const textParent = () => {
     const phone = job?.parent_phone || job?.parent?.phone;
-    if (!phone) { Alert.alert('No Phone', 'Parent phone number not available.'); return; }
+    if (!phone) return Alert.alert('No Phone', 'Parent phone not available.');
     Linking.openURL(`sms:${phone}`);
   };
 
   const getDirections = () => {
     const addr = job?.address || job?.city;
-    if (!addr) { Alert.alert('No Address', 'Job address not available.'); return; }
-    const url = `https://maps.google.com/?q=${encodeURIComponent(addr)}`;
-    Linking.openURL(url);
+    if (!addr) return Alert.alert('No Address', 'Job address not available.');
+    Linking.openURL(`https://maps.google.com/?q=${encodeURIComponent(addr)}`);
   };
 
   const pInitials = job?.parent_name
-    ? job.parent_name.split(' ').map((n: string) => n[0]).join('').toUpperCase()
+    ? job.parent_name.split(' ').map((n:string)=>n[0]).join('').toUpperCase()
     : 'P';
 
-  const statusColor = {
-    travelling: '#F5A623',
-    arrived:    '#02A4E2',
-    started:    '#1A7F6E',
-    done:       '#1A7F6E',
-  }[status];
-
+  const statusColor = {travelling:'#F5A623',arrived:'#02A4E2',started:'#1A7F6E',done:'#1A7F6E'}[status];
   const statusLabel = {
-    travelling: '🚗 Travelling to parent',
-    arrived:    '📍 Arrived at location',
-    started:    '⏱️ Job in progress',
-    done:       '✅ Job complete',
+    travelling:'🚗 Travelling to parent',
+    arrived:   '📍 Arrived at location',
+    started:   '⏱️ Job in progress',
+    done:      '✅ Job complete',
   }[status];
 
   return (
     <SafeAreaView style={s.container}>
       <StatusBar barStyle="light-content" />
-
-      {/* Header */}
-      <LinearGradient
-        colors={['#02A4E2', '#0270C8', '#9B5BAB']}
-        start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-        style={s.header}
-      >
+      <LinearGradient colors={['#02A4E2','#0270C8','#9B5BAB']}
+        start={{x:0,y:0}} end={{x:1,y:1}} style={s.header}>
         <View style={s.headerRow}>
           <TouchableOpacity onPress={() => router.replace('/sitter-home')} style={s.backBtn}>
             <Text style={s.backText}>‹</Text>
           </TouchableOpacity>
-          <View style={{ flex: 1, alignItems: 'center' }}>
+          <View style={{flex:1,alignItems:'center'}}>
             <Text style={s.headerTitle}>Active Job</Text>
             <Text style={s.headerSub}>{statusLabel}</Text>
           </View>
-          <View style={{ width: 36 }} />
+          <View style={{width:36}} />
         </View>
       </LinearGradient>
 
@@ -431,217 +184,107 @@ export default function ActiveJob() {
           </View>
         ) : (
           <>
-            {/* Timer card */}
-            {status === 'started' || status === 'done' ? (
-              <View style={[s.timerCard, status === 'done' && s.timerCardDone]}>
-                <Text style={s.timerLabel}>
-                  {status === 'done' ? 'Total Time' : 'Elapsed Time'}
-                </Text>
+            {/* Timer */}
+            {(status === 'started' || status === 'done') && (
+              <View style={[s.timerCard, status==='done'&&{backgroundColor:'#1A7F6E'}]}>
+                <Text style={s.timerLabel}>{status==='done'?'Total Time':'Elapsed Time'}</Text>
                 <Text style={s.timerDisplay}>{fmt(elapsed)}</Text>
                 <View style={s.earningsRow}>
-                  <Text style={s.earningsLabel}>
-                    {status === 'done' ? 'Total Earned' : 'Current Earnings'}
-                  </Text>
+                  <Text style={s.earningsLabel}>{status==='done'?'Total Earned':'Current Earnings'}</Text>
                   <Text style={s.earningsValue}>${earnings}</Text>
                 </View>
-                <Text style={s.rateNote}>
-                  ${rate.toFixed(2)}/hr × {(elapsed/3600).toFixed(2)} hrs
-                  {kids > 1 && addRate > 0
-                    ? `\n$${baseRate.toFixed(2)} base + $${addRate.toFixed(2)}×${kids-1} extra child${kids-1 !== 1 ? 'ren' : ''}`
-                    : ''}
-                </Text>
+                <Text style={s.rateNote}>${rate}/hr × {(elapsed/3600).toFixed(2)} hrs</Text>
               </View>
-            ) : null}
+            )}
 
             {/* Status indicator */}
-            <View style={[s.statusCard, { borderColor: statusColor }]}>
-              <View style={[s.statusDot, { backgroundColor: statusColor }]} />
-              <Text style={[s.statusText, { color: statusColor }]}>{statusLabel}</Text>
+            <View style={[s.statusCard, {borderColor:statusColor}]}>
+              <View style={[s.statusDot, {backgroundColor:statusColor}]} />
+              <Text style={[s.statusText, {color:statusColor}]}>{statusLabel}</Text>
+              {status === 'travelling' && (
+                <View style={s.liveTag}>
+                  <Text style={s.liveTagText}>📡 LIVE</Text>
+                </View>
+              )}
             </View>
 
-            {/* Parent info card */}
+            {/* Parent info */}
             <View style={s.parentCard}>
               <Text style={s.cardTitle}>Parent Details</Text>
               <View style={s.parentTop}>
                 <View style={s.parentAv}>
-                  <LinearGradient colors={['#C93488', '#9B5BAB']} style={StyleSheet.absoluteFill} />
+                  <LinearGradient colors={['#C93488','#9B5BAB']} style={StyleSheet.absoluteFill} />
                   <Text style={s.parentAvText}>{pInitials}</Text>
                 </View>
-                <View style={{ flex: 1 }}>
+                <View style={{flex:1}}>
                   <Text style={s.parentName}>{job?.parent_name || 'Parent'}</Text>
-                  <Text style={s.parentMeta}>
-                    {job?.kids || user?.kids || 1} child{(job?.kids || 1) !== 1 ? 'ren' : ''}
-                  </Text>
-                  {job?.address ? (
-                    <Text style={s.parentAddress} numberOfLines={2}>
-                      📍 {job.address}{job.city ? `, ${job.city}` : ''}
-                    </Text>
-                  ) : null}
+                  <Text style={s.parentMeta}>{job?.kids||1} child{(job?.kids||1)!==1?'ren':''}</Text>
+                  {job?.address ? <Text style={s.parentAddress} numberOfLines={2}>📍 {job.address}{job.city?', '+job.city:''}</Text> : null}
                 </View>
               </View>
-
-              {/* Contact buttons */}
               <View style={s.contactRow}>
                 <TouchableOpacity style={s.callBtn} onPress={callParent} activeOpacity={0.85}>
-                  <Text style={s.contactIcon}>📞</Text>
-                  <Text style={s.callBtnText}>Call</Text>
+                  <Text style={{fontSize:18}}>📞</Text><Text style={s.callBtnText}>Call Parent</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={s.textBtn} onPress={textParent} activeOpacity={0.85}>
-                  <Text style={s.contactIcon}>💬</Text>
-                  <Text style={s.textBtnText}>Text</Text>
+                  <Text style={{fontSize:18}}>💬</Text><Text style={s.textBtnText}>Text Parent</Text>
                 </TouchableOpacity>
-                <View style={{ flex: 1, position: 'relative' }}>
-                  <TouchableOpacity
-                    style={s.chatBtn}
-                    onPress={() => {
-                      const parentName = job?.parent_name || job?.pname || 'Parent';
-                      (global as any).chatJob = {
-                        job_id:        job?.id || jobIdRef.current,
-                        viewer_type:   'sitter',
-                        viewer_id:     user.id,
-                        other_name:    parentName,
-                        other_initial: (parentName[0] || 'P').toUpperCase(),
-                      };
-                      setUnreadCount(0);
-                      router.push('/chat');
-                    }}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={s.contactIcon}>✉️</Text>
-                    <Text style={s.chatBtnText}>Chat</Text>
-                  </TouchableOpacity>
-                  {unreadCount > 0 && (
-                    <View style={s.chatBadge}>
-                      <Text style={s.chatBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
-                    </View>
-                  )}
-                </View>
               </View>
-
-              {/* Directions */}
               <TouchableOpacity style={s.directionsBtn} onPress={getDirections} activeOpacity={0.85}>
                 <Text style={s.directionsBtnText}>🗺️ Get Directions</Text>
               </TouchableOpacity>
             </View>
 
+            {/* Location sharing notice */}
+            <View style={s.locationNote}>
+              <Text style={s.locationNoteText}>
+                📡 Your location is being shared with the parent in real time so they can track your arrival.
+              </Text>
+            </View>
+
             {/* Job details */}
             <View style={s.detailCard}>
               <Text style={s.cardTitle}>Job Summary</Text>
-              {(() => {
-                const ages: number[] = Array.isArray(job?.children_ages) ? job.children_ages : [];
-                const kidCount = job?.kids || ages.length || 1;
-                const agesStr  = ages.length > 0
-                  ? ages.map((a: number) => a === 0 ? 'Infant' : `${a} yr${a !== 1 ? 's' : ''}`).join(', ')
-                  : null;
-                const childrenLabel = agesStr
-                  ? `${kidCount} child${kidCount !== 1 ? 'ren' : ''} · ${agesStr}`
-                  : `${kidCount} child${kidCount !== 1 ? 'ren' : ''}`;
-                return [
-                  ['Job ID',    `#${job?.id || job?.job_id || '—'}`],
-                  ['Children',  childrenLabel],
-                  ['Your Rate', kids > 1 && addRate > 0
-                    ? `$${rate.toFixed(2)}/hr ($${baseRate.toFixed(2)} + $${addRate.toFixed(2)}×${kids-1})`
-                    : `$${rate.toFixed(2)}/hr`],
-                  ['Address',   job?.address || '—'],
-                ].map(([label, value]) => (
-                  <View key={label} style={s.detailRow}>
-                    <Text style={s.detailLabel}>{label}</Text>
-                    <Text style={[s.detailValue, label === 'Children' && { fontSize: 12, lineHeight: 18 }]}>{value}</Text>
-                  </View>
-                ));
-              })()}
+              {[
+                ['Job ID',    `#${job?.id||job?.job_id||'—'}`],
+                ['Children',  `${job?.kids||1}`],
+                ['Your Rate', `$${rate}/hr`],
+                ['Address',   job?.address||'—'],
+              ].map(([label,value])=>(
+                <View key={label} style={s.detailRow}>
+                  <Text style={s.detailLabel}>{label}</Text>
+                  <Text style={s.detailValue}>{value}</Text>
+                </View>
+              ))}
             </View>
 
-            {/* Children Info card — only shown if profiles exist */}
-            {childProfiles.length > 0 && (
-              <View style={s.childInfoCard}>
-                <TouchableOpacity
-                  style={s.childInfoHeader}
-                  onPress={() => setShowChildInfo(v => !v)}
-                  activeOpacity={0.8}
-                >
-                  <Text style={s.childInfoTitle}>👶 Children Info</Text>
-                  <Text style={s.childInfoToggle}>{showChildInfo ? '▲ Hide' : '▼ Show'}</Text>
-                </TouchableOpacity>
-                {showChildInfo && childProfiles.map((child: any) => (
-                  <View key={child.id} style={s.childInfoItem}>
-                    <Text style={s.childInfoName}>
-                      {child.name}  ·  {child.age != null ? (child.age === 0 ? 'Infant' : `${child.age} yr${child.age !== 1 ? 's' : ''}`) : 'Age N/A'}
-                    </Text>
-                    {Array.isArray(child.allergies) && child.allergies.length > 0 && (
-                      <View style={s.childInfoRow}>
-                        <Text style={s.childInfoLabel}>⚠️ Allergies</Text>
-                        <Text style={[s.childInfoVal, { color: '#C0392B', fontWeight: '700' }]}>
-                          {child.allergies.join(', ')}
-                        </Text>
-                      </View>
-                    )}
-                    {!!child.medical_notes && (
-                      <View style={s.childInfoRow}>
-                        <Text style={s.childInfoLabel}>🏥 Medical</Text>
-                        <Text style={s.childInfoVal}>{child.medical_notes}</Text>
-                      </View>
-                    )}
-                    {!!child.bedtime_routine && (
-                      <View style={s.childInfoRow}>
-                        <Text style={s.childInfoLabel}>🌙 Bedtime</Text>
-                        <Text style={s.childInfoVal}>{child.bedtime_routine}</Text>
-                      </View>
-                    )}
-                    {!!child.special_needs && (
-                      <View style={s.childInfoRow}>
-                        <Text style={s.childInfoLabel}>💜 Special</Text>
-                        <Text style={s.childInfoVal}>{child.special_needs}</Text>
-                      </View>
-                    )}
-                    {!!child.emergency_contact_name && (
-                      <View style={s.childInfoRow}>
-                        <Text style={s.childInfoLabel}>🆘 Emergency</Text>
-                        <Text style={s.childInfoVal}>
-                          {child.emergency_contact_name}{child.emergency_contact_phone ? `  ${child.emergency_contact_phone}` : ''}
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                ))}
-              </View>
-            )}
-
-            {/* Action buttons based on status */}
-            {status === 'travelling' && (
+            {/* Action buttons */}
+            {status==='travelling' && (
               <TouchableOpacity onPress={handleArrived} activeOpacity={0.85}>
-                <LinearGradient colors={['#02A4E2', '#0270C8']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.actionBtn}>
+                <LinearGradient colors={['#02A4E2','#0270C8']} start={{x:0,y:0}} end={{x:1,y:0}} style={s.actionBtn}>
                   <Text style={s.actionBtnText}>📍  I Have Arrived</Text>
                 </LinearGradient>
               </TouchableOpacity>
             )}
-
-            {status === 'arrived' && (
+            {status==='arrived' && (
               <TouchableOpacity onPress={handleStartJob} activeOpacity={0.85}>
-                <LinearGradient colors={['#1A7F6E', '#0D5C51']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.actionBtn}>
+                <LinearGradient colors={['#1A7F6E','#0D5C51']} start={{x:0,y:0}} end={{x:1,y:0}} style={s.actionBtn}>
                   <Text style={s.actionBtnText}>▶  Start Job & Timer</Text>
                 </LinearGradient>
               </TouchableOpacity>
             )}
-
-            {status === 'started' && (
+            {status==='started' && (
               <TouchableOpacity onPress={handleEndJob} activeOpacity={0.85}>
-                <LinearGradient colors={['#BF3B2E', '#8B1A10']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.actionBtn}>
+                <LinearGradient colors={['#BF3B2E','#8B1A10']} start={{x:0,y:0}} end={{x:1,y:0}} style={s.actionBtn}>
                   <Text style={s.actionBtnText}>■  End Job</Text>
                 </LinearGradient>
               </TouchableOpacity>
             )}
-
-            {status === 'done' && (
+            {status==='done' && (
               <View style={s.doneCard}>
                 <Text style={s.doneText}>🎉 Job Complete!</Text>
-                <Text style={s.doneSub}>Earnings: ${earnings} · Duration: {fmt(elapsed)}</Text>
-                <Text style={s.doneSub2}>Payment will be processed by the parent shortly.</Text>
-                <TouchableOpacity
-                  style={s.doneBtn}
-                  onPress={() => router.replace('/sitter-home')}
-                  activeOpacity={0.85}
-                >
+                <Text style={s.doneSub}>Earnings: ${earnings} · {fmt(elapsed)}</Text>
+                <TouchableOpacity style={s.doneBtn} onPress={() => router.replace('/sitter-home')} activeOpacity={0.85}>
                   <Text style={s.doneBtnText}>Back to Home</Text>
                 </TouchableOpacity>
               </View>
@@ -649,182 +292,60 @@ export default function ActiveJob() {
           </>
         )}
       </ScrollView>
-
-      {/* ── RATE PARENT MODAL ───────────────────────────────────── */}
-      <Modal visible={showRateParent} transparent animationType="slide" onRequestClose={() => setShowRateParent(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-          <TouchableOpacity style={rm.overlay} activeOpacity={1} onPress={() => !submittingRate && setShowRateParent(false)}>
-            <TouchableOpacity activeOpacity={1} style={rm.sheet} onPress={() => {}}>
-              {ratingDone ? (
-                <View style={rm.doneBox}>
-                  <Text style={rm.doneIcon}>⭐</Text>
-                  <Text style={rm.doneTitle}>Rating Submitted!</Text>
-                  <Text style={rm.doneSub}>Thank you for keeping our community great.</Text>
-                  <TouchableOpacity style={rm.doneBtn} onPress={() => { setShowRateParent(false); router.replace('/sitter-home'); }}>
-                    <Text style={rm.doneBtnText}>Back to Home</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                <>
-                  <View style={rm.handle} />
-                  <Text style={rm.title}>Rate This Parent</Text>
-                  <Text style={rm.sub}>
-                    How was {job?.parent_name?.split(' ')[0] || 'the parent'} to work with?
-                  </Text>
-
-                  {/* Star row */}
-                  <View style={rm.stars}>
-                    {[1, 2, 3, 4, 5].map(i => (
-                      <TouchableOpacity key={i} onPress={() => setParentStars(i)} activeOpacity={0.7}>
-                        <Text style={[rm.star, i <= parentStars && rm.starOn]}>★</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                  <Text style={rm.starLabel}>
-                    {parentStars === 5 ? 'Excellent parent 🎉'
-                     : parentStars === 4 ? 'Good parent 👍'
-                     : parentStars === 3 ? 'Average'
-                     : parentStars === 2 ? 'Below average'
-                     : 'Poor experience'}
-                  </Text>
-
-                  <TextInput
-                    style={rm.noteInput}
-                    value={parentNote}
-                    onChangeText={setParentNote}
-                    placeholder="Optional note (e.g. 'Kids were well-prepared')"
-                    placeholderTextColor="#9B9FAE"
-                    multiline
-                    maxLength={200}
-                  />
-
-                  <TouchableOpacity
-                    style={[rm.submitBtn, submittingRate && { opacity: 0.7 }]}
-                    activeOpacity={0.85}
-                    disabled={submittingRate}
-                    onPress={async () => {
-                      setSubmittingRate(true);
-                      try {
-                        const jobId    = job?.id || job?.job_id || jobIdRef.current;
-                        const parentId = job?.parent_id || job?.job_data?.parent_id;
-                        await axios.post(`${JOBS_API}?action=rate_parent`, {
-                          job_id:    jobId,
-                          sitter_id: user.id || (user as any).u_id,
-                          parent_id: parentId,
-                          rating:    parentStars,
-                          note:      parentNote.trim(),
-                        });
-                      } catch {}
-                      setSubmittingRate(false);
-                      setRatingDone(true);
-                    }}
-                  >
-                    <LinearGradient colors={['#ED1E76', '#C93488']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={rm.submitGrad}>
-                      {submittingRate
-                        ? <ActivityIndicator color="#fff" />
-                        : <Text style={rm.submitText}>Submit Rating</Text>
-                      }
-                    </LinearGradient>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity onPress={() => { setShowRateParent(false); router.replace('/sitter-home'); }} style={{ marginTop: 10, alignItems: 'center' }}>
-                    <Text style={{ fontSize: 14, color: '#9B9FAE' }}>Skip</Text>
-                  </TouchableOpacity>
-                </>
-              )}
-            </TouchableOpacity>
-          </TouchableOpacity>
-        </KeyboardAvoidingView>
-      </Modal>
-
     </SafeAreaView>
   );
 }
 
-const rm = StyleSheet.create({
-  overlay:     { flex: 1, backgroundColor: 'rgba(15,17,23,0.6)', justifyContent: 'flex-end' },
-  sheet:       { backgroundColor: '#FFFFFF', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 40 },
-  handle:      { width: 36, height: 4, backgroundColor: '#EEECE7', borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
-  title:       { fontSize: 22, fontWeight: '900', color: '#0F1117', textAlign: 'center' },
-  sub:         { fontSize: 14, color: '#5A5F72', textAlign: 'center', marginTop: 6, marginBottom: 20 },
-  stars:       { flexDirection: 'row', justifyContent: 'center', gap: 10, marginBottom: 8 },
-  star:        { fontSize: 44, color: '#D9D6CE' },
-  starOn:      { color: '#F4A800' },
-  starLabel:   { fontSize: 15, fontWeight: '700', color: '#0F1117', textAlign: 'center', marginBottom: 16 },
-  noteInput:   { backgroundColor: '#F5F4F0', borderRadius: 12, borderWidth: 1.5, borderColor: 'rgba(15,17,23,0.1)', padding: 14, fontSize: 14, color: '#0F1117', minHeight: 80, textAlignVertical: 'top', marginBottom: 16 },
-  submitBtn:   { borderRadius: 14, overflow: 'hidden' },
-  submitGrad:  { padding: 16, alignItems: 'center' },
-  submitText:  { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
-  doneBox:     { alignItems: 'center', paddingVertical: 20, gap: 10 },
-  doneIcon:    { fontSize: 52 },
-  doneTitle:   { fontSize: 22, fontWeight: '900', color: '#0F1117' },
-  doneSub:     { fontSize: 14, color: '#5A5F72', textAlign: 'center' },
-  doneBtn:     { backgroundColor: '#F5F4F0', borderRadius: 12, paddingVertical: 14, paddingHorizontal: 32, marginTop: 8 },
-  doneBtnText: { fontSize: 15, fontWeight: '700', color: '#0F1117' },
-});
-
 const s = StyleSheet.create({
-  container:      { flex: 1, backgroundColor: '#F5F4F0' },
-  header:         { paddingBottom: 16 },
-  headerRow:      { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 12 },
-  backBtn:        { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  backText:       { fontSize: 32, color: '#FFFFFF', fontWeight: '300' },
-  headerTitle:    { fontSize: 18, fontWeight: '900', color: '#FFFFFF' },
-  headerSub:      { fontSize: 13, color: 'rgba(255,255,255,0.85)', marginTop: 2 },
-  scroll:         { flex: 1, marginTop: -16 },
-  content:        { paddingTop: 24, paddingHorizontal: 16, paddingBottom: 48, gap: 14 },
-  loadBox:        { alignItems: 'center', paddingVertical: 48, gap: 12 },
-  loadText:       { fontSize: 14, color: '#5A5F72' },
-  timerCard:      { backgroundColor: '#2C3E50', borderRadius: 20, padding: 28, alignItems: 'center', gap: 6 },
-  timerCardDone:  { backgroundColor: '#1A7F6E' },
-  timerLabel:     { fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.7)', letterSpacing: 1.5, textTransform: 'uppercase' },
-  timerDisplay:   { fontSize: 52, fontWeight: '900', color: '#FFFFFF', letterSpacing: -2 },
-  earningsRow:    { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4 },
-  earningsLabel:  { fontSize: 13, color: 'rgba(255,255,255,0.7)' },
-  earningsValue:  { fontSize: 28, fontWeight: '900', color: '#FFFFFF' },
-  rateNote:       { fontSize: 12, color: 'rgba(255,255,255,0.5)' },
-  statusCard:     { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#FFFFFF', borderRadius: 12, padding: 14, borderWidth: 2 },
-  statusDot:      { width: 12, height: 12, borderRadius: 6 },
-  statusText:     { fontSize: 15, fontWeight: '700' },
-  parentCard:     { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 18, borderWidth: 1, borderColor: 'rgba(15,17,23,0.09)' },
-  cardTitle:      { fontSize: 16, fontWeight: '800', color: '#0F1117', marginBottom: 14 },
-  parentTop:      { flexDirection: 'row', gap: 12, marginBottom: 14 },
-  parentAv:       { width: 56, height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 },
-  parentAvText:   { fontSize: 18, fontWeight: '800', color: '#FFFFFF', zIndex: 1 },
-  parentName:     { fontSize: 17, fontWeight: '800', color: '#0F1117' },
-  parentMeta:     { fontSize: 13, color: '#5A5F72', marginTop: 2 },
-  parentAddress:  { fontSize: 12, color: '#9B9FAE', marginTop: 4, lineHeight: 18 },
-  contactRow:     { flexDirection: 'row', gap: 10, marginBottom: 10 },
-  callBtn:        { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#1A7F6E', borderRadius: 10, padding: 12 },
-  chatBtn:        { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#FFF0F7', borderRadius: 10, padding: 12, borderWidth: 1.5, borderColor: 'rgba(201,52,136,0.3)' },
-  chatBtnText:    { color: '#C93488', fontSize: 13, fontWeight: '700' },
-  chatBadge:      { position: 'absolute', top: -6, right: -6, minWidth: 20, height: 20, borderRadius: 10, backgroundColor: '#E53935', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4, borderWidth: 2, borderColor: '#FFFFFF' },
-  chatBadgeText:  { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
-  contactIcon:    { fontSize: 18 },
-  callBtnText:    { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
-  textBtn:        { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#E8F6FD', borderRadius: 10, padding: 12, borderWidth: 1.5, borderColor: 'rgba(2,164,226,0.3)' },
-  textBtnText:    { color: '#02A4E2', fontSize: 13, fontWeight: '700' },
-  directionsBtn:  { backgroundColor: '#F5F4F0', borderRadius: 10, padding: 12, alignItems: 'center', borderWidth: 1, borderColor: '#E5E2DA' },
-  directionsBtnText: { fontSize: 14, fontWeight: '700', color: '#5A5F72' },
-  childInfoCard:   { backgroundColor: '#FFFFFF', borderRadius: 16, borderWidth: 1.5, borderColor: 'rgba(201,52,136,0.2)', overflow: 'hidden' },
-  childInfoHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 14, backgroundColor: 'rgba(201,52,136,0.06)' },
-  childInfoTitle:  { fontSize: 15, fontWeight: '800', color: '#0F1117' },
-  childInfoToggle: { fontSize: 13, fontWeight: '600', color: '#C93488' },
-  childInfoItem:   { padding: 14, borderTopWidth: 1, borderTopColor: 'rgba(15,17,23,0.07)', gap: 6 },
-  childInfoName:   { fontSize: 14, fontWeight: '800', color: '#0F1117', marginBottom: 4 },
-  childInfoRow:    { flexDirection: 'row', gap: 8, alignItems: 'flex-start' },
-  childInfoLabel:  { fontSize: 12, fontWeight: '700', color: '#9B9FAE', width: 72, flexShrink: 0 },
-  childInfoVal:    { flex: 1, fontSize: 13, color: '#3A3F52', lineHeight: 18 },
-  detailCard:     { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 18, borderWidth: 1, borderColor: 'rgba(15,17,23,0.09)' },
-  detailRow:      { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(15,17,23,0.07)' },
-  detailLabel:    { fontSize: 13, color: '#9B9FAE', fontWeight: '600' },
-  detailValue:    { fontSize: 13, color: '#0F1117', fontWeight: '600', flex: 1, textAlign: 'right' },
-  actionBtn:      { borderRadius: 14, padding: 18, alignItems: 'center' },
-  actionBtnText:  { color: '#FFFFFF', fontSize: 17, fontWeight: '800' },
-  doneCard:       { backgroundColor: '#D4EDE9', borderRadius: 16, padding: 24, alignItems: 'center', gap: 8, borderWidth: 1, borderColor: 'rgba(26,127,110,0.2)' },
-  doneText:       { fontSize: 22, fontWeight: '900', color: '#1A7F6E' },
-  doneSub:        { fontSize: 15, color: '#1A7F6E', fontWeight: '600' },
-  doneSub2:       { fontSize: 13, color: '#1A7F6E', textAlign: 'center', lineHeight: 20 },
-  doneBtn:        { marginTop: 8, backgroundColor: '#1A7F6E', borderRadius: 12, paddingVertical: 12, paddingHorizontal: 32 },
-  doneBtnText:    { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
+  container:      {flex:1,backgroundColor:'#F5F4F0'},
+  header:         {paddingBottom:16},
+  headerRow:      {flexDirection:'row',alignItems:'center',paddingHorizontal:16,paddingTop:14,paddingBottom:6},
+  backBtn:        {width:36,height:36,alignItems:'center',justifyContent:'center'},
+  backText:       {fontSize:32,color:'#FFFFFF',fontWeight:'300'},
+  headerTitle:    {fontSize:18,fontWeight:'900',color:'#FFFFFF'},
+  headerSub:      {fontSize:13,color:'rgba(255,255,255,0.85)',marginTop:2},
+  scroll:         {flex:1,marginTop:-16},
+  content:        {paddingTop:24,paddingHorizontal:16,paddingBottom:48,gap:14},
+  loadBox:        {alignItems:'center',paddingVertical:48,gap:12},
+  loadText:       {fontSize:14,color:'#5A5F72'},
+  timerCard:      {backgroundColor:'#2C3E50',borderRadius:20,padding:28,alignItems:'center',gap:6},
+  timerLabel:     {fontSize:12,fontWeight:'600',color:'rgba(255,255,255,0.7)',letterSpacing:1.5,textTransform:'uppercase'},
+  timerDisplay:   {fontSize:52,fontWeight:'900',color:'#FFFFFF',letterSpacing:-2},
+  earningsRow:    {flexDirection:'row',alignItems:'center',gap:10,marginTop:4},
+  earningsLabel:  {fontSize:13,color:'rgba(255,255,255,0.7)'},
+  earningsValue:  {fontSize:28,fontWeight:'900',color:'#FFFFFF'},
+  rateNote:       {fontSize:12,color:'rgba(255,255,255,0.5)'},
+  statusCard:     {flexDirection:'row',alignItems:'center',gap:10,backgroundColor:'#FFFFFF',borderRadius:12,padding:14,borderWidth:2},
+  statusDot:      {width:12,height:12,borderRadius:6},
+  statusText:     {fontSize:15,fontWeight:'700',flex:1},
+  liveTag:        {backgroundColor:'#FFF0F7',borderRadius:6,paddingHorizontal:8,paddingVertical:3},
+  liveTagText:    {fontSize:10,fontWeight:'800',color:'#C93488'},
+  parentCard:     {backgroundColor:'#FFFFFF',borderRadius:16,padding:18,borderWidth:1,borderColor:'rgba(15,17,23,0.09)'},
+  cardTitle:      {fontSize:16,fontWeight:'800',color:'#0F1117',marginBottom:14},
+  parentTop:      {flexDirection:'row',gap:12,marginBottom:14},
+  parentAv:       {width:56,height:56,borderRadius:16,alignItems:'center',justifyContent:'center',overflow:'hidden',flexShrink:0},
+  parentAvText:   {fontSize:18,fontWeight:'800',color:'#FFFFFF',zIndex:1},
+  parentName:     {fontSize:17,fontWeight:'800',color:'#0F1117'},
+  parentMeta:     {fontSize:13,color:'#5A5F72',marginTop:2},
+  parentAddress:  {fontSize:12,color:'#9B9FAE',marginTop:4,lineHeight:18},
+  contactRow:     {flexDirection:'row',gap:10,marginBottom:10},
+  callBtn:        {flex:1,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:6,backgroundColor:'#1A7F6E',borderRadius:10,padding:12},
+  callBtnText:    {color:'#FFFFFF',fontSize:13,fontWeight:'700'},
+  textBtn:        {flex:1,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:6,backgroundColor:'#E8F6FD',borderRadius:10,padding:12,borderWidth:1.5,borderColor:'rgba(2,164,226,0.3)'},
+  textBtnText:    {color:'#02A4E2',fontSize:13,fontWeight:'700'},
+  directionsBtn:  {backgroundColor:'#F5F4F0',borderRadius:10,padding:12,alignItems:'center',borderWidth:1,borderColor:'#E5E2DA'},
+  directionsBtnText:{fontSize:14,fontWeight:'700',color:'#5A5F72'},
+  locationNote:   {backgroundColor:'#FFF0F7',borderRadius:12,padding:12,borderWidth:1,borderColor:'rgba(201,52,136,0.2)'},
+  locationNoteText:{fontSize:13,color:'#C93488',lineHeight:18},
+  detailCard:     {backgroundColor:'#FFFFFF',borderRadius:16,padding:18,borderWidth:1,borderColor:'rgba(15,17,23,0.09)'},
+  detailRow:      {flexDirection:'row',justifyContent:'space-between',paddingVertical:10,borderBottomWidth:1,borderBottomColor:'rgba(15,17,23,0.07)'},
+  detailLabel:    {fontSize:13,color:'#9B9FAE',fontWeight:'600'},
+  detailValue:    {fontSize:13,color:'#0F1117',fontWeight:'600',flex:1,textAlign:'right'},
+  actionBtn:      {borderRadius:14,padding:18,alignItems:'center'},
+  actionBtnText:  {color:'#FFFFFF',fontSize:17,fontWeight:'800'},
+  doneCard:       {backgroundColor:'#D4EDE9',borderRadius:16,padding:24,alignItems:'center',gap:8,borderWidth:1,borderColor:'rgba(26,127,110,0.2)'},
+  doneText:       {fontSize:22,fontWeight:'900',color:'#1A7F6E'},
+  doneSub:        {fontSize:15,color:'#1A7F6E',fontWeight:'600'},
+  doneBtn:        {marginTop:8,backgroundColor:'#1A7F6E',borderRadius:12,paddingVertical:12,paddingHorizontal:32},
+  doneBtnText:    {color:'#FFFFFF',fontSize:15,fontWeight:'700'},
 });

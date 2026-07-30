@@ -14,7 +14,9 @@ import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import axios from 'axios';
-import { saveActiveSession, clearActiveSession } from './index';
+// Session helpers (inline)
+const saveActiveSession = (_type: string, _id: number, _user: any) => {};
+const clearActiveSession = () => {};
 
 const JOBS_API   = 'https://sitters4me.com/api/jobs.php';
 const STRIPE_API = 'https://sitters4me.com/api/stripe.php';

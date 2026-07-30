@@ -1,4 +1,4 @@
-// app/_layout.tsx — complete route registry
+// app/_layout.tsx — complete route registry including tracking
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 
@@ -12,6 +12,7 @@ export default function RootLayout() {
         <Stack.Screen name="parent-register" />
         <Stack.Screen name="parent-home" />
         <Stack.Screen name="job-accepted" />
+        <Stack.Screen name="job-tracking" />
         <Stack.Screen name="payment" />
         <Stack.Screen name="schedule-sitter" />
         <Stack.Screen name="rate-sitter" />
