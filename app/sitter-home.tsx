@@ -38,10 +38,17 @@ export default function SitterHome() {
   // in the file than checkForJobs) can call it on notification-driven focus.
   const checkForJobsRef  = useRef<() => void>(() => {});
 
-  // keepAudioSessionActive:true holds the iOS audio session open between plays
-  const ringPlayer   = useAudioPlayer(SOUNDS.jobRequest,    { keepAudioSessionActive: true });
-  const warnPlayer   = useAudioPlayer(SOUNDS.countdownWarn, { keepAudioSessionActive: true });
-  const acceptPlayer = useAudioPlayer(SOUNDS.jobAccepted,   { keepAudioSessionActive: true });
+  // Sound players — wrapped in try/catch; if expo-audio fails, app still works
+  let ringPlayer: any = null;
+  let warnPlayer: any = null;
+  let acceptPlayer: any = null;
+  try {
+    ringPlayer   = useAudioPlayer(SOUNDS.jobRequest,    { keepAudioSessionActive: true });
+    warnPlayer   = useAudioPlayer(SOUNDS.countdownWarn, { keepAudioSessionActive: true });
+    acceptPlayer = useAudioPlayer(SOUNDS.jobAccepted,   { keepAudioSessionActive: true });
+  } catch (e) {
+    console.warn('Audio player init failed:', e);
+  }
 
   // Restore online state from global so returning from active-job keeps sitter online
   const [isOnline, setIsOnline]         = useState((global as any).sitterOnline === true);
@@ -65,7 +72,22 @@ export default function SitterHome() {
     useCallback(() => {
       setProfileVersion(v => v + 1);
       const aj = (global as any).activeJob;
-      setHasActiveJob(!!(aj?.job_id));
+      // Check if the job is actually still active (not completed/cancelled)
+      if (aj?.job_id) {
+        axios.post('https://sitters4me.com/api/jobs.php?action=job_status', { job_id: aj.job_id })
+          .then((res: any) => {
+            const st = res.data?.data?.status;
+            if (st === 'Complete' || st === 'Completed' || st === 'Cancelled' || st === 'Refunded') {
+              (global as any).activeJob = null;
+              setHasActiveJob(false);
+            } else {
+              setHasActiveJob(true);
+            }
+          })
+          .catch(() => setHasActiveJob(!!(aj?.job_id)));
+      } else {
+        setHasActiveJob(false);
+      }
 
       // If the sitter tapped a push-notification job request, trigger an
       // immediate check_incoming call rather than waiting for the 3-s poll.
@@ -119,6 +141,7 @@ export default function SitterHome() {
   };
 
   const startRing = async () => {
+    if (!ringPlayer) return;
     try {
       await ensureAudio();
       ringPlayer.loop   = true;
@@ -131,12 +154,13 @@ export default function SitterHome() {
   const stopRing = () => {
     clearInterval(soundLoopRef.current);
     soundLoopRef.current = null;
-    try { ringPlayer.pause(); ringPlayer.seekTo(0); } catch {}
+    try { ringPlayer?.pause(); ringPlayer?.seekTo(0); } catch {}
   };
 
   const stopSound = stopRing;
 
   const playWarn = async () => {
+    if (!warnPlayer) return;
     try {
       await ensureAudio();
       warnPlayer.volume = 1.0;
@@ -146,6 +170,7 @@ export default function SitterHome() {
   };
 
   const playAccept = async () => {
+    if (!acceptPlayer) return;
     try {
       await ensureAudio();
       acceptPlayer.volume = 1.0;
@@ -392,7 +417,7 @@ export default function SitterHome() {
           setToggling(false);
           return;
         }
-        const l = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+        const l = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
         lat = l.coords.latitude;
         lng = l.coords.longitude;
       }

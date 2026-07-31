@@ -65,17 +65,11 @@ export default function Chat() {
   const pollRef     = useRef<any>(null);
   const listRef     = useRef<FlatList>(null);
   const inputRef    = useRef<TextInput>(null);
-  let dingPlayer: any = null;
-  try {
-    dingPlayer = useAudioPlayer(require('../assets/sounds/chat_ding.mp3'), { keepAudioSessionActive: true });
-  } catch (e) {
-    console.warn('Chat audio init failed:', e);
-  }
+  const dingPlayer = useAudioPlayer(require('../assets/sounds/chat_ding.mp3'), { keepAudioSessionActive: true });
 
   const playDing = async () => {
     try {
-      Vibration.vibrate([0, 200, 100, 200]);
-      if (!dingPlayer) return;
+      Vibration.vibrate(200);
       await setAudioModeAsync({ playsInSilentMode: true, interruptionMode: 'mixWithOthers' });
       dingPlayer.volume = 1.0;
       await dingPlayer.seekTo(0);

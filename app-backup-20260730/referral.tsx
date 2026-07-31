@@ -4,7 +4,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  StatusBar, ActivityIndicator, Share, Alert, Linking,
+  StatusBar, ActivityIndicator, Share, Alert,
 } from 'react-native';
 import * as ExpoClipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -31,24 +31,19 @@ export default function Referral() {
   useEffect(() => { load(); }, []);
 
   const load = async () => {
-    // Generate a local fallback code immediately
-    const fallbackCode = `S4M-${(user.fname || 'USER').toUpperCase().slice(0, 4)}${userId || '001'}`;
-    setCode(fallbackCode);
     if (!userId) { setLoading(false); return; }
     try {
       const res = await axios.post(`${JOBS_API}?action=get_referral_code`, {
         user_type: userType,
         user_id:   userId,
       });
-      if (res.data?.success && res.data.data?.code) {
+      if (res.data?.success) {
         const d = res.data.data;
         setCode(d.code);
         setCredits(parseFloat(d.credits) || 0);
         setCount(parseInt(d.count) || 0);
       }
-    } catch {
-      // Keep fallback code — already set above
-    }
+    } catch {}
     finally { setLoading(false); }
   };
 
@@ -145,7 +140,7 @@ export default function Referral() {
             )}
           </View>
 
-          {/* Share buttons */}
+          {/* Share button */}
           <TouchableOpacity onPress={shareInvite} activeOpacity={0.88} style={s.shareWrap}>
             <LinearGradient
               colors={['#ED1E76', '#C93488', '#9B5BAB']}
@@ -155,26 +150,6 @@ export default function Referral() {
               <Text style={s.shareBtnText}>🚀  Share My Invite Code</Text>
             </LinearGradient>
           </TouchableOpacity>
-
-          <View style={s.shareRow}>
-            <TouchableOpacity style={s.shareOptBtn} onPress={() => {
-              if (!code) return;
-              const msg = `Join Sitters4Me with my code: ${code} and we both get $${CREDIT_AMOUNT} credit! Download at sitters4me.com`;
-              Linking.openURL(`sms:&body=${encodeURIComponent(msg)}`);
-            }} activeOpacity={0.85}>
-              <Text style={{fontSize:20}}>💬</Text>
-              <Text style={s.shareOptText}>Send via Text</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={s.shareOptBtn} onPress={() => {
-              if (!code) return;
-              const subject = `Join Sitters4Me - Get $${CREDIT_AMOUNT} Credit!`;
-              const body = `Hey! I use Sitters4Me and thought you would love it too.\n\nSign up with my invite code: ${code}\n\nWe both get $${CREDIT_AMOUNT} credit!\n\nDownload at sitters4me.com`;
-              Linking.openURL(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
-            }} activeOpacity={0.85}>
-              <Text style={{fontSize:20}}>📧</Text>
-              <Text style={s.shareOptText}>Send via Email</Text>
-            </TouchableOpacity>
-          </View>
 
           {/* How it works */}
           <View style={s.howCard}>
@@ -253,8 +228,4 @@ const s = StyleSheet.create({
   howText:          { fontSize: 14, color: '#5A5F72', flex: 1, lineHeight: 20 },
 
   finePrint:        { fontSize: 11, color: '#C5C2BA', textAlign: 'center', lineHeight: 17, paddingHorizontal: 8 },
-
-  shareRow:         { flexDirection: 'row', gap: 10 },
-  shareOptBtn:      { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#FFFFFF', borderRadius: 12, padding: 14, borderWidth: 1.5, borderColor: '#E5E2DA', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 2 },
-  shareOptText:     { fontSize: 13, fontWeight: '700', color: '#5A5F72' },
 });

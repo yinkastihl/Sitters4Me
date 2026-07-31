@@ -9,7 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import axios from 'axios';
 
-const API = 'https://sitters4me.com/api/jobs.php';
+const API = 'https://sitters4me.com/api/ratings.php';
 
 export default function RateParent() {
   const router  = useRouter();
@@ -38,7 +38,7 @@ export default function RateParent() {
         sitter_id:  user.id,
         parent_id:  parentId,
         rating,
-        note:       review.trim(),
+        review:     review.trim(),
         would_return: wouldReturn,
       });
       if (res.data.success) {

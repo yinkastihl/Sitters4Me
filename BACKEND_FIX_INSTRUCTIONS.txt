@@ -1,0 +1,42 @@
+The save_tip case needs to be added to jobs.php on GoDaddy.
+
+Add this BEFORE the line:  case 'get_sitter_reviews':
+(around line 2281)
+
+------- PASTE THIS CODE -------
+
+    case 'save_tip':
+        $job_id     = (int)($body['job_id']     ?? 0);
+        $parent_id  = (int)($body['parent_id']  ?? 0);
+        $tip_amount = round((float)($body['tip_amount'] ?? 0), 2);
+        if (!$job_id || !$parent_id) err('Missing job_id or parent_id');
+        if ($tip_amount < 1 || $tip_amount > 200) err('Tip must be between $1 and $200');
+
+        // Verify job exists and belongs to this parent
+        $job = row("SELECT id, sitter_id, status FROM jobs WHERE id=? AND parent_id=?", [$job_id, $parent_id]);
+        if (!$job) err('Job not found');
+
+        // Save tip to jobs table
+        run("UPDATE jobs SET tip_amount=? WHERE id=?", [$tip_amount, $job_id]);
+
+        // Also try to create a payments record for the tip
+        try {
+            run("INSERT INTO payments (job_id, parent_id, sitter_id, amount, payment_type, status, created_at)
+                 VALUES (?, ?, ?, ?, 'tip', 'completed', NOW())",
+                [$job_id, $parent_id, $job['sitter_id'], $tip_amount]);
+        } catch (Exception $e) {
+            // payments table may not have all columns — non-critical
+        }
+
+        ok(['tip_amount' => $tip_amount], 'Tip saved successfully!');
+
+------- END -------
+
+Also: the rate_parent case checks status='Complete' but the app may store
+status as 'completed' (lowercase). Change line ~2254 from:
+    $job = row("SELECT id FROM jobs WHERE id=? AND status='Complete'", [$job_id]);
+To:
+    $job = row("SELECT id FROM jobs WHERE id=? AND (status='Complete' OR status='completed' OR status='Completed')", [$job_id]);
+
+Also: make sure the jobs table has a tip_amount column:
+    ALTER TABLE jobs ADD COLUMN tip_amount DECIMAL(10,2) DEFAULT 0;

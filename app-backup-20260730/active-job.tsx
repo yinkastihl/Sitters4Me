@@ -40,37 +40,8 @@ export default function ActiveJob() {
     setLoading(true);
     try {
       const res = await axios.post(`${JOBS_API}?action=get_sitter_active_job`, { sitter_id: user.id });
-      if (res.data.success && res.data.data) {
-        const d = res.data.data;
-        setJob(d);
-        // Restore status and timer if returning mid-job
-        const st = (d.status || '').toLowerCase();
-        if (st === 'started' || st === 'in_progress' || st === 'in progress') {
-          setStatus('started');
-          // Calculate elapsed: prefer global jobStartTime, then server started_at
-          let elapsedSec = 0;
-          if ((global as any).jobStartTime) {
-            elapsedSec = Math.max(0, Math.floor((Date.now() - (global as any).jobStartTime) / 1000));
-          } else if (d.started_at) {
-            elapsedSec = Math.max(0, Math.floor((Date.now() - new Date(d.started_at).getTime()) / 1000));
-            (global as any).jobStartTime = Date.now() - (elapsedSec * 1000);
-          }
-          setElapsed(elapsedSec);
-          clearInterval(timerRef.current);
-          const base = (global as any).jobStartTime || Date.now();
-          timerRef.current = setInterval(() => {
-            setElapsed(Math.floor((Date.now() - base) / 1000));
-          }, 1000);
-        } else if (st === 'arrived') {
-          setStatus('arrived');
-        } else if (st === 'completed' || st === 'complete') {
-          setStatus('done');
-        } else if (st === 'travelling' || st === 'assigned') {
-          setStatus('travelling');
-        }
-      } else if (global.activeJob) {
-        setJob(global.activeJob);
-      }
+      if (res.data.success && res.data.data) setJob(res.data.data);
+      else if (global.activeJob) setJob(global.activeJob);
     } catch { if (global.activeJob) setJob(global.activeJob); }
     finally { setLoading(false); }
   };
@@ -129,15 +100,9 @@ export default function ActiveJob() {
   const handleStartJob = async () => {
     setStatus('started');
     await updateStatus('started');
-    const startTime = Date.now();
-    (global as any).jobStartTime = startTime;
     setElapsed(0);
-    clearInterval(timerRef.current);
-    timerRef.current = setInterval(() => {
-      const e = Math.floor((Date.now() - ((global as any).jobStartTime || startTime)) / 1000);
-      setElapsed(e);
-    }, 1000);
-    Alert.alert('Job Started!', 'Timer is running. The parent has been notified.');
+    timerRef.current = setInterval(() => setElapsed(e => e + 1), 1000);
+    Alert.alert('⏱️ Job Started!', 'Timer is running. The parent has been notified.');
   };
 
   const handleEndJob = async () => {
@@ -176,17 +141,9 @@ export default function ActiveJob() {
   };
 
   const getDirections = () => {
-    const j = job || (global as any).activeJob || {};
-    const lat = j.parent_lat || j.lat;
-    const lng = j.parent_lng || j.lng;
-    const addr = j.address || j.city;
-    if (lat && lng && parseFloat(lat) !== 0) {
-      Linking.openURL(`https://maps.google.com/?daddr=${lat},${lng}`);
-    } else if (addr) {
-      Linking.openURL(`https://maps.google.com/?daddr=${encodeURIComponent(addr)}`);
-    } else {
-      Alert.alert('No Address', 'Parent location not available.');
-    }
+    const addr = job?.address || job?.city;
+    if (!addr) return Alert.alert('No Address', 'Job address not available.');
+    Linking.openURL(`https://maps.google.com/?q=${encodeURIComponent(addr)}`);
   };
 
   const pInitials = job?.parent_name
@@ -272,19 +229,10 @@ export default function ActiveJob() {
                 <TouchableOpacity style={s.textBtn} onPress={textParent} activeOpacity={0.85}>
                   <Text style={{fontSize:18}}>💬</Text><Text style={s.textBtnText}>Text</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={s.chatBtn} onPress={() => {
-                  const j = job || (global as any).activeJob || {};
-                  const sitterUser = global.currentUser || {};
-                  const parentName = j.parent_name || j.parent_fname || 'Parent';
-                  (global as any).chatJob = {
-                    job_id:        j.id || j.job_id || 0,
-                    viewer_type:   'sitter',
-                    viewer_id:     Number(sitterUser.id) || 0,
-                    other_name:    parentName,
-                    other_initial: parentName[0]?.toUpperCase() || 'P',
-                  };
-                  router.push('/chat');
-                }} activeOpacity={0.85}>
+                <TouchableOpacity style={s.chatBtn} onPress={() => router.push({
+                  pathname: '/chat',
+                  params: { job_id: String(job?.id||job?.job_id||''), other_id: String(job?.parent_id||''), other_name: job?.parent_name||'Parent', role: 'sitter' }
+                })} activeOpacity={0.85}>
                   <Text style={{fontSize:18}}>💬</Text><Text style={s.chatBtnText}>Chat</Text>
                 </TouchableOpacity>
               </View>
