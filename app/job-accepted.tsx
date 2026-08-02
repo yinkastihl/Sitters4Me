@@ -363,9 +363,10 @@ export default function JobAccepted() {
     // Determine phase
     const st = (d.status || '').toLowerCase();
     let newPhase: JobPhase = 'travelling';
-    if (st === 'sitter arrived')  newPhase = 'arrived';
-    else if (st === 'in progress') newPhase = 'in_progress';
-    else if (st === 'complete')    newPhase = 'complete';
+    if (st === 'sitter arrived' || st === 'arrived')          newPhase = 'arrived';
+    else if (st === 'in progress' || st === 'in_progress' || st === 'started') newPhase = 'in_progress';
+    else if (st === 'complete' || st === 'completed')          newPhase = 'complete';
+    else if (st === 'cancelled' || st === 'canceled')          { global.activeJob = null; router.replace('/parent-home'); return; }
 
     setPhase(prev => {
       if (prev === 'travelling' && newPhase === 'arrived') showArrivedBanner();

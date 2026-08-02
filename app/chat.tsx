@@ -73,10 +73,12 @@ export default function Chat() {
   }
 
   const playDing = async () => {
+    // Always vibrate — works even if audio fails
+    try { Vibration.vibrate([0, 300, 150, 300, 150, 300]); } catch {}
+    // Try to play sound
+    if (!dingPlayer) return;
     try {
-      Vibration.vibrate([0, 200, 100, 200]);
-      if (!dingPlayer) return;
-      await setAudioModeAsync({ playsInSilentMode: true, interruptionMode: 'mixWithOthers' });
+      await setAudioModeAsync({ playsInSilentMode: true, shouldPlayInBackground: true, interruptionMode: 'mixWithOthers' });
       dingPlayer.volume = 1.0;
       await dingPlayer.seekTo(0);
       dingPlayer.play();

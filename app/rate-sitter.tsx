@@ -9,7 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import axios from 'axios';
 
-const API = 'https://sitters4me.com/api/ratings.php';
+const API = 'https://sitters4me.com/api/jobs.php';
 
 const CATEGORIES = [
   { key: 'punctual',     label: 'Punctuality',      icon: '⏰' },
@@ -21,10 +21,10 @@ const CATEGORIES = [
 export default function RateSitter() {
   const router  = useRouter();
   const params  = useLocalSearchParams();
-  const sitterId   = params.sitter_id   as string || '';
-  const sitterName = params.sitter_name as string || 'your sitter';
+  const sitterId   = params.sitter_id   as string || String((global as any).activeJob?.sitter_id || '') || '';
+  const sitterName = params.sitter_name as string || (global as any).activeJob?.sitter_name || 'your sitter';
   const sitterImg  = params.sitter_image as string || '';
-  const jobId      = params.job_id      as string || '';
+  const jobId      = params.job_id      as string || String((global as any).activeJob?.job_id || (global as any).activeJob?.id || '') || '';
 
   const [overall,   setOverall]   = useState(0);
   const [hovered,   setHovered]   = useState(0);
@@ -50,7 +50,7 @@ export default function RateSitter() {
         parent_id:   user.id,
         sitter_id:   sitterId,
         rating:      overall,
-        review:      review.trim(),
+        note:        review.trim(),
         recommend:   recommend,
         categories:  cats,
       });

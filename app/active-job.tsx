@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  StatusBar, Alert, Linking, ActivityIndicator,
+  StatusBar, Alert, Linking, ActivityIndicator, Vibration,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -22,6 +22,8 @@ export default function ActiveJob() {
   const [loading, setLoading] = useState(true);
   const [status,  setStatus]  = useState<'travelling'|'arrived'|'started'|'done'>('travelling');
   const [elapsed, setElapsed] = useState(0);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const chatPollRef = useRef<any>(null);
 
   const user  = global.currentUser || {};
   const rate  = user.minrate || job?.rate || 15;
@@ -30,9 +32,31 @@ export default function ActiveJob() {
   useEffect(() => {
     loadActiveJob();
     startLocationSharing();
+    // Poll unread chat messages every 5s
+    const startChatPoll = () => {
+      chatPollRef.current = setInterval(async () => {
+        const j = job || (global as any).activeJob;
+        const jid = j?.id || j?.job_id;
+        if (!jid) return;
+        try {
+          const res = await axios.post(`${JOBS_API}?action=get_unread_count`, {
+            job_id: jid, viewer_type: 'sitter',
+          });
+          if (res.data?.success) {
+            const newCount = res.data.data?.unread || 0;
+            setUnreadCount(prev => {
+              if (newCount > prev) try { Vibration.vibrate(200); } catch {}
+              return newCount;
+            });
+          }
+        } catch {}
+      }, 5000);
+    };
+    startChatPoll();
     return () => {
       clearInterval(timerRef.current);
       clearInterval(locRef.current);
+      clearInterval(chatPollRef.current);
     };
   }, []);
 
@@ -104,31 +128,30 @@ export default function ActiveJob() {
     return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
   };
 
-  const updateStatus = async (newStatus: string) => {
-    const j = job || global.activeJob;
-    if (!j?.id && !j?.job_id) return;
-    const jobId = j.id || j.job_id;
-    try {
-      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      await axios.post(`${JOBS_API}?action=update_job_status`, {
-        job_id:    jobId,
-        sitter_id: user.id,
-        status:    newStatus,
-        lat:       loc.coords.latitude,
-        lng:       loc.coords.longitude,
-      });
-    } catch {}
-  };
 
   const handleArrived = async () => {
     setStatus('arrived');
-    await updateStatus('arrived');
-    Alert.alert('📍 Arrived!', 'The parent has been notified that you have arrived.');
+    const j = job || global.activeJob;
+    const jobId = j?.id || j?.job_id;
+    if (jobId) {
+      try {
+        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        await axios.post(`${JOBS_API}?action=sitter_arrived`, {
+          job_id: jobId, sitter_id: user.id,
+          lat: loc.coords.latitude, lng: loc.coords.longitude,
+        });
+      } catch {}
+    }
+    Alert.alert('Arrived!', 'The parent has been notified that you have arrived.');
   };
 
   const handleStartJob = async () => {
     setStatus('started');
-    await updateStatus('started');
+    const j = job || global.activeJob;
+    const jobId = j?.id || j?.job_id;
+    if (jobId) {
+      try { await axios.post(`${JOBS_API}?action=start_job`, { job_id: jobId, sitter_id: user.id }); } catch {}
+    }
     const startTime = Date.now();
     (global as any).jobStartTime = startTime;
     setElapsed(0);
@@ -149,12 +172,23 @@ export default function ActiveJob() {
         { text: 'End Job', onPress: async () => {
           clearInterval(timerRef.current);
           setStatus('done');
-          await updateStatus('completed');
-          Alert.alert('Job Complete! 🎉',
-            `Duration: ${fmt(elapsed)}\nEstimated earnings: $${earnings}\n\nPayment will be processed shortly.`,
+          const j2 = job || global.activeJob;
+          const jid2 = j2?.id || j2?.job_id;
+          if (jid2) { try { await axios.post(`${JOBS_API}?action=stop_job`, { job_id: jid2, sitter_id: user.id }); } catch {} }
+          const finalElapsed = elapsed;
+          (global as any).activeJob = null;
+          Alert.alert('Job Complete!',
+            `Duration: ${fmt(finalElapsed)}\nEarnings: $${((finalElapsed / 3600) * rate).toFixed(2)}\n\nPayment will be processed shortly.`,
             [{ text: 'Rate Parent', onPress: () => router.push({
                 pathname: '/rate-parent',
-                params: { parent_id: job?.parent_id, parent_name: job?.parent_name, job_id: job?.id || job?.job_id }
+                params: {
+                  parent_id: String(job?.parent_id || ''),
+                  parent_name: job?.parent_name || 'Parent',
+                  job_id: String(job?.id || job?.job_id || ''),
+                  seconds: String(finalElapsed),
+                  kids: String(job?.kids || 1),
+                  child_ages: job?.child_ages || '',
+                }
               })},
              { text: 'Done', onPress: () => router.replace('/sitter-home') }]
           );
@@ -283,9 +317,15 @@ export default function ActiveJob() {
                     other_name:    parentName,
                     other_initial: parentName[0]?.toUpperCase() || 'P',
                   };
+                  setUnreadCount(0);
                   router.push('/chat');
                 }} activeOpacity={0.85}>
-                  <Text style={{fontSize:18}}>💬</Text><Text style={s.chatBtnText}>Chat</Text>
+                  <Text style={{fontSize:18}}>{'\uD83D\uDCAC'}</Text><Text style={s.chatBtnText}>Chat</Text>
+                  {unreadCount > 0 && (
+                    <View style={s.chatBadge}>
+                      <Text style={s.chatBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+                    </View>
+                  )}
                 </TouchableOpacity>
               </View>
               <TouchableOpacity style={s.directionsBtn} onPress={getDirections} activeOpacity={0.85}>
@@ -330,8 +370,8 @@ export default function ActiveJob() {
                      { text: 'Cancel Job', style: 'destructive', onPress: async () => {
                         const j = job || global.activeJob;
                         const jobId = j?.id || j?.job_id;
-                        if (jobId) { try { await axios.post(JOBS_API+'?action=update_job_status',
-                          { job_id: jobId, sitter_id: user.id, status: 'cancelled' }); } catch {} }
+                        if (jobId) { try { await axios.post(JOBS_API+'?action=cancel_request',
+                          { job_id: jobId, parent_id: job?.parent_id || 0 }); } catch {} }
                         clearInterval(timerRef.current); clearInterval(locRef.current);
                         global.activeJob = null; router.replace('/sitter-home');
                      }}]
@@ -425,6 +465,8 @@ const s = StyleSheet.create({
   doneBtnText:    {color:'#FFFFFF',fontSize:15,fontWeight:'700'},
   chatBtn:        {flex:1,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:6,backgroundColor:'#F5F4F0',borderRadius:10,padding:12,borderWidth:1.5,borderColor:'#E5E2DA'},
   chatBtnText:    {color:'#5A5F72',fontSize:13,fontWeight:'700'},
+  chatBadge:      {position:'absolute',top:-6,right:-6,minWidth:20,height:20,borderRadius:10,backgroundColor:'#E53935',alignItems:'center',justifyContent:'center',paddingHorizontal:4,borderWidth:2,borderColor:'#FFFFFF'},
+  chatBadgeText:  {color:'#FFFFFF',fontSize:11,fontWeight:'800'},
   cancelJobBtn:   {borderRadius:12,padding:14,alignItems:'center',borderWidth:1.5,borderColor:'rgba(191,59,46,0.3)',backgroundColor:'#FDE9E7'},
   cancelJobText:  {color:'#BF3B2E',fontSize:15,fontWeight:'700'},
 });

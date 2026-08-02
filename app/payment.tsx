@@ -20,6 +20,8 @@ export default function PaymentScreen() {
   const rate       = parseFloat(params.rate  as string || String(global.currentUser?.minrate || 15));
   const sitterId   = params.sitter_id    as string || String(global.activeJob?.sitter_id || '');
   const sitterName = params.sitter_name  as string || String(global.activeJob?.sitter_name || 'Your Sitter');
+  const numKids    = parseInt(params.kids as string || String(global.activeJob?.kids || 1));
+  const childAges  = (params.child_ages as string) || (global.activeJob?.child_ages as string) || '';
 
   const [calc,        setCalc]        = useState<any>(null);
   const [loading,     setLoading]     = useState(true);
@@ -57,44 +59,72 @@ export default function PaymentScreen() {
   const calculatePayment = async () => {
     setLoading(true);
     try {
-      const res = await axios.post(`${PAY_API}?action=calculate`, {
-        job_id:      jobId || 0,
-        seconds:     seconds || 3600,        // default 1hr if no timer
-        hourly_rate: rate   || user.minrate || 15,
-      });
-      if (res.data.success) {
-        setCalc(res.data.data);
+      // ── BILLING RULES ──
+      // 1. Base rate = sitter hourly rate
+      // 2. Each additional child after the 1st adds $5/hr
+      // 3. Minimum charge = 2 hours (any time within first 2 hrs rounds to 2 hrs)
+      // 4. After 2 hours, charge per minute
+
+      const actualSeconds = seconds || 7200; // default 2hrs if no timer
+      const baseRate      = rate || 15;
+      const kids          = numKids || 1;
+      const extraKidsRate = (kids > 1) ? (kids - 1) * 5 : 0; // $5 per extra child
+      const totalRate     = baseRate + extraKidsRate;
+
+      // Calculate billable hours
+      let billableHours: number;
+      const MIN_HOURS = 2;
+      const rawHours  = actualSeconds / 3600;
+
+      if (rawHours <= MIN_HOURS) {
+        // Any time within first 2 hours = charged full 2 hours
+        billableHours = MIN_HOURS;
       } else {
-        // Build calc manually if API fails
-        const hrs      = (seconds || 3600) / 3600;
-        const subtotal = Math.round(hrs * (rate || 15) * 100) / 100;
-        const fee      = Math.round(subtotal * 0.10 * 100) / 100;
-        setCalc({
-          hours_worked:  Math.round(hrs * 100) / 100,
-          hourly_rate:   rate || 15,
-          subtotal,
-          platform_fee:  fee,
-          total:         subtotal + fee,
-          sitter_payout: subtotal,
-          breakdown:     `${Math.round(hrs * 100) / 100}hrs × $${rate || 15}/hr`,
-        });
+        // First 2 hours + per-minute for extra time
+        const extraSeconds = actualSeconds - (MIN_HOURS * 3600);
+        const extraMinutes = Math.ceil(extraSeconds / 60); // round up to next minute
+        billableHours = MIN_HOURS + (extraMinutes / 60);
       }
+
+      const subtotal    = Math.round(billableHours * totalRate * 100) / 100;
+      const platformFee = Math.round(subtotal * 0.10 * 100) / 100;
+      const total       = Math.round((subtotal + platformFee) * 100) / 100;
+
+      // Build breakdown text
+      let breakdown = `$${totalRate.toFixed(2)}/hr`;
+      if (kids > 1) breakdown += ` ($${baseRate} base + $${extraKidsRate} for ${kids - 1} extra child${kids > 2 ? 'ren' : ''})`;
+      if (rawHours <= MIN_HOURS) {
+        breakdown += ` x ${MIN_HOURS} hrs (2-hr minimum)`;
+      } else {
+        const extraMins = Math.ceil((actualSeconds - MIN_HOURS * 3600) / 60);
+        breakdown += ` x 2 hrs + ${extraMins} min`;
+      }
+
+      setCalc({
+        hours_worked:    Math.round(billableHours * 100) / 100,
+        actual_time:     rawHours,
+        hourly_rate:     totalRate,
+        base_rate:       baseRate,
+        extra_kids_rate: extraKidsRate,
+        kids:            kids,
+        subtotal,
+        platform_fee:    platformFee,
+        total,
+        sitter_payout:   subtotal,
+        breakdown,
+        min_applied:     rawHours < MIN_HOURS,
+      });
     } catch {
-      const hrs      = (seconds || 3600) / 3600;
+      const hrs      = Math.max(2, (seconds || 7200) / 3600);
       const subtotal = Math.round(hrs * (rate || 15) * 100) / 100;
       const fee      = Math.round(subtotal * 0.10 * 100) / 100;
       setCalc({
-        hours_worked:  Math.round(hrs * 100) / 100,
-        hourly_rate:   rate || 15,
-        subtotal,
-        platform_fee:  fee,
-        total:         subtotal + fee,
-        sitter_payout: subtotal,
-        breakdown:     '',
+        hours_worked: hrs, hourly_rate: rate || 15, subtotal,
+        platform_fee: fee, total: subtotal + fee, sitter_payout: subtotal,
+        breakdown: '', kids: numKids || 1, base_rate: rate || 15, extra_kids_rate: 0,
+        min_applied: false, actual_time: hrs,
       });
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   const fmt = (s: number) => {
@@ -107,6 +137,7 @@ export default function PaymentScreen() {
     if (!calc) return;
     setPaying(true);
     try {
+      console.log('Creating PayPal order:', { job_id: jobId, parent_id: user.id, amount: calc.total });
       const res = await axios.post(`${PAY_API}?action=create_order`, {
         job_id:        jobId || 0,
         parent_id:     user.id,
@@ -118,6 +149,8 @@ export default function PaymentScreen() {
         sitter_payout: calc.sitter_payout,
       });
 
+      console.log('create_order response:', JSON.stringify(res.data));
+
       if (!res.data.success) {
         Alert.alert('Payment Error', res.data.error || 'Could not start payment. Please try again.');
         setPaying(false);
@@ -126,25 +159,24 @@ export default function PaymentScreen() {
 
       const { order_id, approve_url } = res.data.data;
       if (!approve_url) {
-        Alert.alert('Error', 'PayPal did not return an approval URL. Please try again.');
+        Alert.alert('Error', 'PayPal did not return an approval URL.\n\nDebug: ' + JSON.stringify(res.data.data).slice(0, 200));
         setPaying(false);
         return;
       }
 
+      console.log('PayPal order created:', order_id, 'Approve URL:', approve_url);
       setPendingOrder(order_id);
-      pendingOrderRef.current   = order_id;
+      pendingOrderRef.current = order_id;
 
-      // ── Step 2: Open PayPal in browser ───────────────────────
-      // When parent approves and returns to app, AppState listener fires capturePayment
+      // Open PayPal approval page in browser
       setWaitingReturn(true);
       waitingReturnRef.current = true;
       await Linking.openURL(approve_url);
-
-      // Show a manual confirm button in case AppState doesn't fire reliably
       setPaying(false);
 
     } catch (e: any) {
-      Alert.alert('Error', e?.response?.data?.error || 'Could not connect to payment service.');
+      console.log('PayPal error:', e?.response?.data || e?.message);
+      Alert.alert('Error', e?.response?.data?.error || e?.message || 'Could not connect to payment service.');
       setPaying(false);
     }
   };
@@ -158,42 +190,74 @@ export default function PaymentScreen() {
     }
     setPaying(true);
     try {
-      // First check if order is actually approved
+      console.log('Checking order status:', orderId);
       const checkRes = await axios.post(`${PAY_API}?action=check_order`, { order_id: orderId });
       const orderStatus = checkRes.data?.data?.status || '';
+      console.log('Order status:', orderStatus, JSON.stringify(checkRes.data).slice(0, 300));
 
       if (orderStatus === 'COMPLETED') {
-        // Already captured (shouldn't happen but handle gracefully)
         setPaid(true); setPaying(false);
         showSuccessAlert();
         return;
       }
 
-      if (orderStatus !== 'APPROVED') {
+      if (orderStatus === 'APPROVED') {
+        // Order is approved — capture it now
+        console.log('Order APPROVED — capturing...');
+        await captureNow(orderId);
+        return;
+      }
+
+      if (orderStatus === 'CREATED') {
+        // User hasn't approved yet in PayPal
         Alert.alert(
           'Not Approved Yet',
-          `Payment status: ${orderStatus || 'Unknown'}.\n\nHave you approved the payment in PayPal?`,
+          'It looks like you haven\'t approved the payment in PayPal yet.\n\nTap "Pay Again" to open PayPal and approve the payment.',
           [
-            { text: 'I Approved It', onPress: () => captureNow(orderId) },
+            { text: 'Pay Again', onPress: async () => {
+              setPaying(false);
+              // Re-open the approval URL
+              try {
+                const res = await axios.post(`${PAY_API}?action=check_order`, { order_id: orderId });
+                const links = res.data?.data?.order?.links || [];
+                const approveLink = links.find((l:any) => l.rel === 'approve' || l.rel === 'payer-action');
+                if (approveLink?.href) {
+                  setWaitingReturn(true);
+                  waitingReturnRef.current = true;
+                  await Linking.openURL(approveLink.href);
+                }
+              } catch {}
+            }},
             { text: 'Cancel', style: 'cancel', onPress: () => setPaying(false) },
           ]
         );
         return;
       }
 
-      await captureNow(orderId);
-    } catch {
-      // If check_order fails, try capture anyway
+      // Unknown status
+      Alert.alert(
+        'Payment Status: ' + orderStatus,
+        'Would you like to try capturing anyway?',
+        [
+          { text: 'Try Capture', onPress: () => captureNow(orderId) },
+          { text: 'Cancel', style: 'cancel', onPress: () => setPaying(false) },
+        ]
+      );
+    } catch (e: any) {
+      console.log('check_order error:', e?.response?.data || e?.message);
+      // If check fails, try capture anyway
       await captureNow(orderId);
     }
   };
 
   const captureNow = async (orderId: string) => {
     try {
+      console.log('Capturing order:', orderId);
       const res = await axios.post(`${PAY_API}?action=capture`, {
         order_id: orderId,
         job_id:   jobId || 0,
       });
+      console.log('Capture response:', JSON.stringify(res.data));
       if (res.data.success) {
         setPaid(true);
         setPaying(false);
@@ -203,11 +267,12 @@ export default function PaymentScreen() {
         waitingReturnRef.current = false;
         showSuccessAlert();
       } else {
-        Alert.alert('Payment Issue', res.data.error || 'Could not confirm payment. Contact support if charged.');
+        Alert.alert('Payment Issue', res.data.error || 'Could not confirm payment.\n\nDebug: ' + JSON.stringify(res.data).slice(0, 200));
         setPaying(false);
       }
-    } catch {
-      Alert.alert('Error', 'Could not confirm payment. Please contact support@sitters4me.com');
+    } catch (e: any) {
+      console.log('Capture error:', e?.response?.data || e?.message);
+      Alert.alert('Error', 'Could not confirm payment: ' + (e?.response?.data?.error || e?.message || 'Unknown'));
       setPaying(false);
     }
   };
@@ -301,14 +366,44 @@ export default function PaymentScreen() {
             {/* Breakdown */}
             <View style={s.breakdownCard}>
               <Text style={s.breakdownTitle}>Payment Breakdown</Text>
+
+              {calc.kids > 1 && (
+                <>
+                  <View style={s.bRow}>
+                    <Text style={s.bLabel}>Base rate</Text>
+                    <Text style={s.bVal}>${parseFloat(calc.base_rate).toFixed(2)}/hr</Text>
+                  </View>
+                  <View style={s.bRow}>
+                    <Text style={s.bLabel}>Extra children ({calc.kids - 1})</Text>
+                    <Text style={s.bVal}>+${parseFloat(calc.extra_kids_rate).toFixed(2)}/hr</Text>
+                  </View>
+                  <View style={s.bRow}>
+                    <Text style={{fontSize:14,color:'#0F1117',fontWeight:'700'}}>Effective rate</Text>
+                    <Text style={{fontSize:14,color:'#02A4E2',fontWeight:'800'}}>${parseFloat(calc.hourly_rate).toFixed(2)}/hr</Text>
+                  </View>
+                </>
+              )}
+              {calc.kids <= 1 && (
+                <View style={s.bRow}>
+                  <Text style={s.bLabel}>Hourly rate</Text>
+                  <Text style={s.bVal}>${parseFloat(calc.hourly_rate).toFixed(2)}/hr</Text>
+                </View>
+              )}
+
               <View style={s.bRow}>
-                <Text style={s.bLabel}>Hourly rate</Text>
-                <Text style={s.bVal}>${parseFloat(calc.hourly_rate).toFixed(2)}/hr</Text>
+                <Text style={s.bLabel}>Children</Text>
+                <Text style={s.bVal}>{calc.kids || 1}{childAges ? ` (${childAges})` : ''}</Text>
+              </View>
+
+              <View style={s.bRow}>
+                <Text style={s.bLabel}>Actual time</Text>
+                <Text style={s.bVal}>{fmt(seconds)}</Text>
               </View>
               <View style={s.bRow}>
-                <Text style={s.bLabel}>Hours worked</Text>
-                <Text style={s.bVal}>{calc.hours_worked} hrs</Text>
+                <Text style={s.bLabel}>Billable hours</Text>
+                <Text style={s.bVal}>{calc.hours_worked} hrs{calc.min_applied ? ' (2-hr min)' : ''}</Text>
               </View>
+
               <View style={s.bRow}>
                 <Text style={s.bLabel}>{fname}'s earnings</Text>
                 <Text style={s.bVal}>${parseFloat(calc.sitter_payout).toFixed(2)}</Text>
@@ -322,6 +417,7 @@ export default function PaymentScreen() {
                 <Text style={s.totalLabel}>Total Due</Text>
                 <Text style={s.totalVal}>${parseFloat(calc.total).toFixed(2)}</Text>
               </View>
+              {calc.breakdown ? <Text style={{fontSize:11,color:'#9B9FAE',marginTop:4}}>{calc.breakdown}</Text> : null}
             </View>
 
             {/* ── WAITING FOR RETURN FROM PAYPAL ── */}

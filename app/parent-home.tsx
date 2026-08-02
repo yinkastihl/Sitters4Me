@@ -10,10 +10,11 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import MapView, { Marker, Circle, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Marker, Circle } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import axios from 'axios';
+import { Platform } from 'react-native';
 
 const { height } = Dimensions.get('window');
 const JOBS_API = 'https://sitters4me.com/api/jobs.php';
@@ -29,6 +30,7 @@ export default function ParentHome() {
   const [locLoading, setLocLoading]         = useState(true);
   const [onlineSitters, setOnlineSitters]   = useState<any[]>([]);
   const [sittersLoading, setSittersLoading] = useState(false);
+  const [imgLoaded, setImgLoaded]           = useState<{[key:string]:boolean}>({});
   const [selected, setSelected]             = useState<any>(null);
   const [requesting, setRequesting]         = useState(false);
   const [requestSent, setReqSent]           = useState(false);
@@ -75,9 +77,21 @@ export default function ParentHome() {
       const res = await axios.post(`${JOBS_API}?action=nearby_sitters`, {
         lat: loc.latitude, lng: loc.longitude, radius: RADIUS_MILES,
       });
-      if (res.data?.success) setOnlineSitters(res.data.data || []);
-      else setOnlineSitters([]);
-    } catch { setOnlineSitters([]); }
+      console.log('nearby_sitters response:', JSON.stringify(res.data).slice(0, 300));
+      if (res.data?.success) {
+        const sitters = res.data.data || [];
+        setOnlineSitters(sitters);
+        // Pre-fetch all sitter images so they render in markers
+        sitters.forEach((st: any) => {
+          if (st.image) {
+            const uri = `https://sitters4me.com/uploads/${st.image}`;
+            Image.prefetch(uri)
+              .then(() => setImgLoaded(prev => ({...prev, [st.id]: true})))
+              .catch(() => {});
+          }
+        });
+      } else setOnlineSitters([]);
+    } catch (e) { console.log('nearby_sitters error:', e); setOnlineSitters([]); }
     finally { setSittersLoading(false); }
   };
 
@@ -265,8 +279,9 @@ export default function ParentHome() {
             <Text style={s.mapLoadingText}>Getting your location...</Text>
           </View>
         ) : (
-          <MapView ref={mapRef} style={StyleSheet.absoluteFill} provider={PROVIDER_GOOGLE}
-            initialRegion={{ latitude:loc?.latitude||29.7604, longitude:loc?.longitude||-95.3698, latitudeDelta:0.05, longitudeDelta:0.05 }}
+          <MapView ref={mapRef} style={StyleSheet.absoluteFill}
+            provider={Platform.OS === 'android' ? 'google' : undefined}
+            initialRegion={{ latitude:loc?.latitude||29.7604, longitude:loc?.longitude||-95.3698, latitudeDelta:0.03, longitudeDelta:0.03 }}
             showsUserLocation showsMyLocationButton showsCompass>
 
             {loc && <Circle center={loc} radius={RADIUS_M}
@@ -274,27 +289,35 @@ export default function ParentHome() {
 
             {/* Real online sitters — profile icon pins */}
             {onlineSitters.map((st, i) => {
-              const lat = parseFloat(st.latitude);
-              const lng = parseFloat(st.longitude);
+              const lat = parseFloat(st.latitude || st.lat);
+              const lng = parseFloat(st.longitude || st.lng);
               if (!lat || !lng || isNaN(lat) || isNaN(lng)) return null;
-              const initials2 = `${(st.fname||'?')[0]}${(st.lname||'?')[0]}`.toUpperCase();
-              const isSelected = selected?.id === st.id;
+              const si = `${(st.fname||'?')[0]}${(st.lname||'?')[0]}`.toUpperCase();
+              const isSel = selected?.id === st.id;
+              const rt = Math.round(parseFloat(st.avg_rating || st.rating || '5') || 5);
+              const imgUrl = st.image ? `https://sitters4me.com/uploads/${st.image}` : null;
+              const hasImg = imgUrl && imgLoaded[st.id];
               return (
-                <Marker key={`sitter-${st.id}-${i}`} coordinate={{latitude:lat, longitude:lng}} onPress={() => focusSitter(st)} tracksViewChanges={false}>
-                  <View style={s.pin}>
-                    <View style={[s.pinAv, isSelected && s.pinAvSelected]}>
-                      {st.image
-                        ? <Image source={{uri:`https://sitters4me.com/uploads/${st.image}`}} style={s.pinImg} />
-                        : <LinearGradient colors={isSelected?['#C93488','#9B5BAB']:['#02A4E2','#0270C8']} style={s.pinGrad}>
-                            <Text style={s.pinInitials}>{initials2}</Text>
-                          </LinearGradient>
-                      }
-                      <View style={s.onlineDot} />
+                <Marker
+                  key={`sitter-${st.id}-${i}`}
+                  coordinate={{latitude:lat, longitude:lng}}
+                  onPress={() => focusSitter(st)}
+                  tracksViewChanges={true}
+                  zIndex={isSel ? 999 : 100 + i}
+                >
+                  <View style={{alignItems:'center'}}>
+                    <View style={{backgroundColor:'white',borderRadius:12,paddingHorizontal:8,paddingVertical:3,marginBottom:4,elevation:5,shadowColor:'#000',shadowOpacity:0.2,shadowRadius:4,shadowOffset:{width:0,height:2},flexDirection:'row',alignItems:'center'}}>
+                      <Text style={{fontSize:14,fontWeight:'bold',color:'#3A5068'}}>{rt} </Text>
+                      <Text style={{fontSize:13}}>{String.fromCodePoint(0x2B50)}</Text>
                     </View>
-                    <View style={s.pinLabel}>
-                      <Text style={s.pinName}>{st.fname}</Text>
-                      <Text style={s.pinRate}>${st.minrate}/hr</Text>
+                    <View style={{backgroundColor:hasImg?'transparent':'#02A4E2',width:isSel?74:66,height:isSel?74:66,borderRadius:isSel?37:33,borderWidth:isSel?4:3,borderColor:isSel?'#C93488':'white',alignItems:'center',justifyContent:'center',elevation:8,shadowColor:'#000',shadowOpacity:0.3,shadowRadius:6,shadowOffset:{width:0,height:3}}}>
+                      {hasImg ? (
+                        <Image source={{uri:imgUrl!}} style={{width:isSel?66:60,height:isSel?66:60,borderRadius:isSel?33:30}} />
+                      ) : (
+                        <Text style={{color:'white',fontSize:24,fontWeight:'bold'}}>{si}</Text>
+                      )}
                     </View>
+                    <View style={{width:0,height:0,borderLeftWidth:10,borderRightWidth:10,borderTopWidth:13,borderLeftColor:'transparent',borderRightColor:'transparent',borderTopColor:isSel?'#C93488':'white',marginTop:-2}} />
                   </View>
                 </Marker>
               );
@@ -527,17 +550,7 @@ const s = StyleSheet.create({
   refreshBtn:        {position:'absolute',top:12,right:12,width:40,height:40,backgroundColor:'#FFFFFF',borderRadius:20,alignItems:'center',justifyContent:'center',shadowColor:'#000',shadowOffset:{width:0,height:2},shadowOpacity:0.15,shadowRadius:6,elevation:4},
   radiusBadge:       {position:'absolute',top:12,left:12,backgroundColor:'rgba(255,255,255,0.92)',borderRadius:20,paddingHorizontal:12,paddingVertical:6},
   radiusBadgeText:   {fontSize:12,fontWeight:'600',color:'#5A5F72'},
-  // Sitter map pins — profile icon
-  pin:               {alignItems:'center',gap:3},
-  pinAv:             {width:48,height:48,borderRadius:24,overflow:'hidden',borderWidth:2.5,borderColor:'#FFFFFF',shadowColor:'#000',shadowOffset:{width:0,height:3},shadowOpacity:0.25,shadowRadius:6,elevation:5},
-  pinAvSelected:     {borderColor:'#C93488',transform:[{scale:1.15}]},
-  pinImg:            {width:48,height:48},
-  pinGrad:           {flex:1,alignItems:'center',justifyContent:'center'},
-  pinInitials:       {fontSize:16,fontWeight:'800',color:'#FFFFFF'},
-  onlineDot:         {position:'absolute',bottom:0,right:0,width:13,height:13,borderRadius:7,backgroundColor:'#1A7F6E',borderWidth:2,borderColor:'#FFFFFF'},
-  pinLabel:          {alignItems:'center',backgroundColor:'rgba(255,255,255,0.96)',borderRadius:8,paddingHorizontal:6,paddingVertical:2},
-  pinName:           {fontSize:11,fontWeight:'700',color:'#0F1117'},
-  pinRate:           {fontSize:10,fontWeight:'600',color:'#C93488'},
+  // (pin styles are inline on Marker for iOS compatibility)
   // Drawer
   drawer:            {backgroundColor:'#FFFFFF',borderTopLeftRadius:24,borderTopRightRadius:24,padding:16,paddingBottom:28,maxHeight:height*0.40,shadowColor:'#000',shadowOffset:{width:0,height:-4},shadowOpacity:0.1,shadowRadius:16,elevation:10},
   handle:            {width:36,height:4,backgroundColor:'#EEECE7',borderRadius:2,alignSelf:'center',marginBottom:12},

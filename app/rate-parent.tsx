@@ -14,9 +14,9 @@ const API = 'https://sitters4me.com/api/jobs.php';
 export default function RateParent() {
   const router  = useRouter();
   const params  = useLocalSearchParams();
-  const parentId   = params.parent_id   as string || '';
-  const parentName = params.parent_name as string || 'the parent';
-  const jobId      = params.job_id      as string || '';
+  const parentId   = params.parent_id   as string || String((global as any).activeJob?.parent_id || '') || '';
+  const parentName = params.parent_name as string || (global as any).activeJob?.parent_name || 'the parent';
+  const jobId      = params.job_id      as string || String((global as any).activeJob?.job_id || (global as any).activeJob?.id || '') || '';
 
   const [rating,  setRating]  = useState(0);
   const [hovered, setHovered] = useState(0);
