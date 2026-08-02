@@ -8,7 +8,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import axios from 'axios';
-import { WebView } from 'react-native-webview';
 
 const JOBS_API = 'https://sitters4me.com/api/jobs.php';
 const PAY_API  = 'https://sitters4me.com/api/payments.php';
@@ -24,8 +23,6 @@ export default function ParentPaymentSettings() {
   const [defaultMethod, setDefaultMethod] = useState('');  // 'stripe' or 'paypal'
 
   // Stripe card setup
-  const [showCardSetup, setShowCardSetup] = useState(false);
-  const [setupUrl, setSetupUrl]           = useState('');
   const [settingUpCard, setSettingUpCard] = useState(false);
 
   // PayPal email
@@ -58,14 +55,20 @@ export default function ParentPaymentSettings() {
     } catch {}
   };
 
-  // ── STRIPE: Open card setup in WebView ─────────────────────
+  // ── STRIPE: Open card setup in browser ─────────────────────
   const startCardSetup = async () => {
     setSettingUpCard(true);
     try {
       const res = await axios.post(`${PAY_API}?action=create_setup_session`, { parent_id: userId });
       if (res.data.success && res.data.data?.url) {
-        setSetupUrl(res.data.data.url);
-        setShowCardSetup(true);
+        await Linking.openURL(res.data.data.url);
+        // Show reload prompt after returning
+        setTimeout(() => {
+          Alert.alert('Card Setup', 'Did you complete the card setup?', [
+            { text: 'Yes - Refresh', onPress: () => loadPaymentMethods() },
+            { text: 'Not Yet' },
+          ]);
+        }, 2000);
       } else {
         Alert.alert('Error', res.data.error || 'Could not start card setup.');
       }
@@ -73,16 +76,6 @@ export default function ParentPaymentSettings() {
       Alert.alert('Error', 'Could not connect to payment server.\n\n' + (e?.message || ''));
     }
     finally { setSettingUpCard(false); }
-  };
-
-  const onCardSetupComplete = async (url: string) => {
-    if (url.includes('success') || url.includes('return')) {
-      setShowCardSetup(false);
-      Alert.alert('Card Added!', 'Your card has been saved securely. It will be charged automatically when jobs complete.');
-      loadPaymentMethods();
-    } else if (url.includes('cancel')) {
-      setShowCardSetup(false);
-    }
   };
 
   // ── PAYPAL: Save email ─────────────────────────────────────
@@ -114,26 +107,7 @@ export default function ParentPaymentSettings() {
 
   const fmtDate = (s: string) => s ? new Date(s).toLocaleDateString() : '';
 
-  // ── Card setup WebView ─────────────────────────────────────
-  if (showCardSetup && setupUrl) {
-    return (
-      <SafeAreaView style={{flex:1,backgroundColor:'#F5F4F0'}}>
-        <View style={{flexDirection:'row',alignItems:'center',padding:16,backgroundColor:'#FFFFFF',borderBottomWidth:1,borderColor:'#E5E2DA'}}>
-          <TouchableOpacity onPress={() => setShowCardSetup(false)} style={{padding:8}}>
-            <Text style={{fontSize:16,color:'#C93488',fontWeight:'700'}}>Cancel</Text>
-          </TouchableOpacity>
-          <Text style={{flex:1,textAlign:'center',fontSize:16,fontWeight:'800',color:'#0F1117'}}>Add Card</Text>
-          <View style={{width:60}} />
-        </View>
-        <WebView
-          source={{uri: setupUrl}}
-          onNavigationStateChange={({url}) => onCardSetupComplete(url)}
-          startInLoadingState
-          renderLoading={() => <ActivityIndicator style={{flex:1}} color="#C93488" size="large" />}
-        />
-      </SafeAreaView>
-    );
-  }
+  // (no WebView needed — card setup opens in browser)
 
   return (
     <SafeAreaView style={s.container}>
